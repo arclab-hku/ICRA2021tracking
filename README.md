@@ -1,10 +1,10 @@
-This is a demo code for the paper "Online Recommendation-based Convolutional Features for Scale-Aware Visual Tracking"
+This is the Matlab demo code for the paper "Online Recommendation-based Convolutional Features for Scale-Aware Visual Tracking"
 
 Folder list:
 
 /data: contain one benchmark dataset (Human5). (For more datasets, please download from http://cvlab.hanyang.ac.kr/tracker_benchmark/datasets.html)
 
-/external: matconvnet (you may need setup the compiler for mex files)
+/external: matconvnet (please setup the compiler for mex files)
 
 /functions: matlab functions for visual tracking
 
