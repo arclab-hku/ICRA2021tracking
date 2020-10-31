@@ -6,10 +6,7 @@
 % Output:
 %
 %
-function [positions, fps, rects, highest_layer] = modify_run_tracker(video, show_visualization)
-
-%path to the videos (you'll be able to choose one with the GUI).
-base_path   = './data';
+function [positions, fps, rects, highest_layer] = modify_run_tracker(video, base_path, show_visualization)
 
 % Extra area surrounding the target
 padding = struct('generic', 2, 'large', 1.5, 'height', 0.6);

@@ -135,7 +135,7 @@ for frame = 1:numel(img_files)
     % ================================================================================
     featuremap_array(:,:,featuremap_array_counter) = featuremap;
     featuremap_array_counter = featuremap_array_counter + 1;
-    if featuremap_array_counter > 5;
+    if featuremap_array_counter > 5
         featuremap_array_counter = 1;
     end
     target_map = sum(featuremap_array,3)./memory_length; 
@@ -186,20 +186,14 @@ for frame = 1:numel(img_files)
         clf;
         imshow(im);
         hold on;
-        rectangle('Position', box, 'EdgeColor', 'g', 'LineWidth', 1);
+        rectangle('Position', box, 'EdgeColor', 'g', 'LineWidth', 4);
         xlabel(['frame = ',num2str(frame)]);
         hold off;
         drawnow;
     end
+    saveas(gcf,['./results/frame ',num2str(frame), '.png'])
 end
 
-end
-
-function feat = extractFeature(im, pos, window_sz, cos_window, indLayers)
-% Get the search window from previous detection
-patch = get_subwindow(im, pos, window_sz);
-% Extracting hierarchical convolutional features
-feat = get_features(patch, cos_window, indLayers);
 end
 
 

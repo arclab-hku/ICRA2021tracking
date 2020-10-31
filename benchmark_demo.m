@@ -25,9 +25,10 @@ clear all;
 close all;
 
 addpath('functions','model','external/matconvnet/matlab');
-data_dir = dir('./data');
+data_dir = './benchmark';
+visualization_flag = 1;
 
 vl_setupnn();
 vl_compilenn();
 
-[A.positions, A.fps, A.rects, highest_layer] = modify_run_tracker('Human5', 1); 
+[A.positions, A.fps, A.rects, highest_layer] = modify_run_tracker('Human5', data_dir, visualization_flag); 

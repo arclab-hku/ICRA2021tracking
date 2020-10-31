@@ -24,7 +24,7 @@ for ii=1 : numLayers
 end
 
 % Model initialization or update
-if frame == 1,  % First frame, train with a single image
+if frame == 1  % First frame, train with a single image
     for ii=1:numLayers
         model_alphaf{ii} = alphaf{ii};
         model_xf{ii} = xf{ii};
