@@ -1,5 +1,7 @@
 This is the Matlab demo code for the paper "Online Recommendation-based Convolutional Features for Scale-Aware Visual Tracking"
 
+For Matlab version
+
 Folder list:
 
 /data: contain one benchmark dataset (Human5). (For more datasets, please download from http://cvlab.hanyang.ac.kr/tracker_benchmark/datasets.html)
@@ -14,6 +16,10 @@ If you are in China, please use this link: http://pan.baidu.com/s/1kU1Me5T )
 
 Run the main entry file demo.m to see the tracking results
 
+
+For Pytorch version
+
+Please waiting for update
+
 Contact:
 Ran Duan: 	rduan036@gmail.com
-Changhong Fu: 	changhongfu@tongji.edu.cn
