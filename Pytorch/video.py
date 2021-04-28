@@ -6,6 +6,7 @@ from torch.autograd import Variable
 import numpy as np
 import cv2 
 from util import *
+from tracking_units import *
 import argparse
 import os 
 import os.path as osp
@@ -18,9 +19,7 @@ import matplotlib.pyplot as plt
 def arg_parse():
     """
     Parse arguements to the detect module
-    
     """
-    
     parser = argparse.ArgumentParser(description='YOLO v3 Detection Module')
     parser.add_argument("--bs", dest = "bs", help = "Batch size", default = 1)
     parser.add_argument("--confidence", dest = "confidence", help = "Object Confidence to filter predictions", default = 0.5)
@@ -34,7 +33,7 @@ def arg_parse():
     parser.add_argument("--reso", dest = 'reso', help = 
                         "Input resolution of the network. Increase to increase accuracy. Decrease to increase speed",
                         default = "416", type = str)
-    parser.add_argument("--video", dest = "videofile", help = "Video file to run detection on", default = "dog.mp4", type = str)
+    parser.add_argument("--video", dest = "videofile", help = "Video file to run detection on", default = "./data/f35.mp4", type = str)
     
     return parser.parse_args()
     
@@ -92,50 +91,15 @@ def task_manager(yolo_detection, target_class, select_rule = 'first_detected'):
                 break
     return rect
 
-def feature_recommender(heat_map, rect):
-    score = 0
-    F_area = (rect[2] - rect[0]) * (rect[3] - rect[1])
-    if F_area > 0:
-        mask = np.zeros(heat_map.shape, np.uint8)
-        mask[rect[1]:rect[3], rect[0]:rect[2]] = 255
-        F = cv2.bitwise_and(heat_map, heat_map, mask = mask)
-        B = heat_map - F
-        DT = np.sum(F) / F_area - np.sum(B) / (heat_map.shape[0] * heat_map.shape[1] - F_area)
-        GT = 1
-        score = DT * GT
-    return score
+# ====================================================================================
+# Load video data
 
-def layer_selection(layers_data, layer_list, img_size, rect, top_N):
-    score_list = []
-    heat_map_list = []
-    for idx in layer_list:
-        fmaps = layers_data[idx].clone().detach()
-        fmap_sum = 0
-        for fmap in fmaps[0, :, :, :]:
-            fmap_sum = fmap_sum + fmap
-            # fmap = fmaps.data[0, 6, :, :]
-        heat_map = fmap_sum.data.cpu().numpy()
-        heat_map = image_norm(heat_map)
-        scale_x = heat_map.shape[1] / img_size[1]
-        scale_y = heat_map.shape[0] / img_size[0]
-        scaled_rect = [int(scale_x * rect[0]), int(scale_y * rect[1]), int(scale_x * rect[2]), int(scale_y * rect[3])]
-        score = feature_recommender(heat_map, scaled_rect)
-        score_list.append(score)
-        heat_map_list.append(heat_map)
-    # get idx of the top N ranked layers
-    recom_layers = sorted(range(len(score_list)), key=lambda sub: score_list[sub])[-top_N:]
-    recom_heatmaps = []
-    for idx in recom_layers:
-        recom_heatmaps.append(heat_map_list[idx])
-    return recom_layers, recom_heatmaps
+videofile = args.videofile #or path to the video file.
 
-#Detection phase
+cap = cv2.VideoCapture(videofile)
 
-# videofile = args.videofile #or path to the video file.
-
-videofile = './data/f35.mp4'
-
-cap = cv2.VideoCapture(videofile)  
+# ====================================================================================
+# Live cam
 
 #cap = cv2.VideoCapture(0)  for webcam
 
@@ -196,10 +160,11 @@ while cap.isOpened():
         if not rect:
             print('Looking for target...')
         else:
-            layer_list = range(12, 36)
-            recom_layers, recom_heatmaps = layer_selection(layers_data, layer_list, frame.shape[:2], rect, top_N)
+            layer_list = range(37, 61)
+            recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data, layer_list, frame.shape[:2], rect)
+            heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list, recom_layers)
             plt.clf()
-            plt.imshow(recom_heatmaps[0], cmap='jet')
+            plt.imshow(heatmap_list[-1], cmap='jet')
             plt.colorbar(label='activation heatmap')
             plt.pause(0.01)
         

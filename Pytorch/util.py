@@ -213,8 +213,3 @@ def load_classes(namesfile):
     fp = open(namesfile, "r")
     names = fp.read().split("\n")[:-1]
     return names
-
-def image_norm(img):
-    img = (img - img.min()) / (img.max() - img.min()) * 255
-    new_img = img.astype(np.uint8)
-    return new_img
