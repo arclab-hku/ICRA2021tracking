@@ -100,17 +100,28 @@ def feature_recommender(layers_data, layer_list, img, rect, top_N_feature = 10, 
 
 def reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list, recom_layers):
     heatmap_list = []
-    for idx in recom_layers:
-        fmaps = layers_data[layer_list[idx]].clone().detach()
-        recom_idx = recom_idx_list[idx]
-        scores = recom_score_list[idx]
-        weights = scores_norm(scores)
-        heatmap = 0
-        for fidx, weight in zip(recom_idx, weights):
-            fmap = fmaps[0, fidx, :, :]
-            heatmap = heatmap + weight * fmap.data.cpu().numpy()
+    if recom_idx_list == 0 or recom_score_list == 0:
+        for idx in recom_layers:
+            fmaps = layers_data[layer_list[idx]].clone().detach()
+            heatmap = 0
+            for fmap in fmaps[0, :, :, :]:
+                heatmap = heatmap + fmap
 
-        heatmap = image_norm(heatmap)
-        heatmap_list.append(heatmap)
+            heatmap = heatmap.data.cpu().numpy()
+            heatmap = image_norm(heatmap)
+            heatmap_list.append(heatmap)
+    else:
+        for idx in recom_layers:
+            fmaps = layers_data[layer_list[idx]].clone().detach()
+            recom_idx = recom_idx_list[idx]
+            scores = recom_score_list[idx]
+            weights = scores_norm(scores)
+            heatmap = 0
+            for fidx, weight in zip(recom_idx, weights):
+                fmap = fmaps[0, fidx, :, :]
+                heatmap = heatmap + weight * fmap.data.cpu().numpy()
+
+            heatmap = image_norm(heatmap)
+            heatmap_list.append(heatmap)
 
     return heatmap_list
