@@ -86,8 +86,8 @@ def task_manager(yolo_detection, target_class, select_rule = 'first_detected'):
         rect = [0, 0, 0, 0]
         if select_rule == 'first_detected':
             if label == target_class:
-                rect[1:2] = x[1:3].int().cpu().numpy()
-                rect[3:4] = x[3:5].int().cpu().numpy()
+                rect[0:2] = x[1:3].int().cpu().numpy()
+                rect[2:4] = x[3:5].int().cpu().numpy()
                 break
     return rect
 
@@ -161,7 +161,7 @@ while cap.isOpened():
             print('Looking for target...')
         else:
             layer_list = range(37, 61)
-            recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data, layer_list, frame.shape[:2], rect)
+            recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data, layer_list, frame, rect)
             heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list, recom_layers)
             plt.clf()
             plt.imshow(heatmap_list[-1], cmap='jet')

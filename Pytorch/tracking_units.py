@@ -2,6 +2,8 @@ import torch
 import statistics
 import numpy as np
 import cv2
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 
 def image_norm(img):
     contrast = img.max() - img.min()
@@ -22,33 +24,53 @@ def findAll(matrix, value):
                 result.append((i,j))
     return result
 
-def getDistictiveScore(heat_map, rect):
+def getDistictiveScore(heatmap, rect, img):
     score = 0
     F_area = (rect[2] - rect[0]) * (rect[3] - rect[1])
-    target_row = (rect[2] + rect[0])/2
-    target_col = (rect[3] + rect[1])/2
-    r = np.sqrt( ((rect[2] - rect[0])/2) ** 2 + ((rect[3] - rect[1])/2) ** 2)
+    target_col = (rect[2] + rect[0])/2
+    target_row = (rect[3] + rect[1])/2
+    r = np.sqrt(((rect[2] - rect[0])/2) ** 2 + ((rect[3] - rect[1])/2) ** 2)
+    # img_resize = cv2.resize(img, heatmap.shape)
+    # cv2.rectangle(img_resize, (rect[0], rect[1]), (rect[2], rect[3]), (255, 0, 0), 1)
+    # plt.figure(num=1, figsize=(12, 6), dpi=80)
     if F_area > 0:
-        mask = np.zeros(heat_map.shape, np.uint8)
+        mask = np.zeros(heatmap.shape, np.uint8)
         mask[rect[1]:rect[3], rect[0]:rect[2]] = 255
-        F = cv2.bitwise_and(heat_map, heat_map, mask = mask)
-        B = heat_map - F
+        F = cv2.bitwise_and(heatmap, heatmap, mask = mask)
+        B = heatmap - F
         DT_list = []
-        locations = np.where(heat_map == heat_map.max())
+        locations = np.where(heatmap == heatmap.max())
         for row, col in zip(locations[0], locations[1]):
             d_i = np.sqrt((row - target_row) ** 2 + (col - target_col) ** 2)
-            DT_list.append(np.exp(1 - (d_i / r) ** 2) - 1)
+            DT_list.append(np.exp(1 - (1.5 * d_i / r) ** 2) - 1)
 
         DT = statistics.mean(DT_list)
-        GT = (np.sum(F) / F_area - np.sum(B) / (heat_map.shape[0] * heat_map.shape[1] - F_area)) ** 2
+        GT = (np.sum(F) / F_area - np.sum(B) / (heatmap.shape[0] * heatmap.shape[1] - F_area)) ** 2
         # GT = (F.max()/255 - B.max()/255) ** 2
         score = DT * GT
+
+        # if score > 0:
+        #     plt.clf()
+        #     plt.subplot(1, 2, 1)
+        #     plt.title(f'score = {score}')
+        #     plt.imshow(heatmap, cmap='jet')
+        #     plt.gca().add_patch(Rectangle((rect[0], rect[1]), rect[2] - rect[0], rect[3] - rect[1], edgecolor = 'red', facecolor = 'none', lw = 1))
+        #     plt.colorbar(label='activation heatmap')
+        #     plt.subplot(1, 2, 2)
+        #     plt.title(f'd_i = {d_i}, r = {r}')
+        #     plt.imshow(img_resize)
+        #     plt.pause(0.01)
+        #     print('debug')
+
+    # plt.show()
+
     return score
 
-def feature_recommender(layers_data, layer_list, img_size, rect, top_N_feature = 10, top_N_layer = 2):
+def feature_recommender(layers_data, layer_list, img, rect, top_N_feature = 10, top_N_layer = 2):
     recom_score_list = []
     recom_idx_list = []
     layer_score = []
+    img_size = img.shape[:2]
     for idx in layer_list:
         fmaps = layers_data[idx].clone().detach()
         scores = []
@@ -58,8 +80,9 @@ def feature_recommender(layers_data, layer_list, img_size, rect, top_N_feature =
         for fmap in fmaps[0, :, :, :]:
             heatmap = fmap.data.cpu().numpy()
             heatmap = image_norm(heatmap)
-            score = getDistictiveScore(heatmap, scaled_rect)
+            score = getDistictiveScore(heatmap, scaled_rect, img)
             scores.append(score)
+
         # get idx of top N features in ascending order of their scores
         recom_idx = sorted(range(len(scores)), key=lambda sub: scores[sub])[-top_N_feature:]
         # save idx for this layer
