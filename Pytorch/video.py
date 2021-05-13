@@ -15,6 +15,7 @@ import pickle as pkl
 import pandas as pd
 import random
 import matplotlib.pyplot as plt
+# import sys
 
 def arg_parse():
     """
@@ -112,7 +113,7 @@ start = time.time()
 task_activate = False
 highest_layer = -1
 
-plt.figure(num=1, figsize=(18, 6), dpi=80)
+# plt.figure(num=1, figsize=(18, 6), dpi=80)
 
 # tracking task config
 target_class = 'aeroplane'
@@ -124,14 +125,19 @@ target_rect = [0, 0, 0, 0]
 recom_idx_list = []
 recom_score_list = []
 recom_layers = []
+multiscale_flag = True
+tracker = ORCFTracker(multiscale_flag)
+cv2.namedWindow('tracking')
+inteval = 1
 
+# start loading video
 while cap.isOpened():
     ret, frame = cap.read()
     start = time.time()
     if ret:   
         img = prep_image(frame, inp_dim)
         im_dim = frame.shape[1], frame.shape[0]
-        im_dim = torch.FloatTensor(im_dim).repeat(1,2)   
+        im_dim = torch.FloatTensor(im_dim).repeat(1, 2)
                      
         if CUDA:
             im_dim = im_dim.cuda()
@@ -140,17 +146,11 @@ while cap.isOpened():
         with torch.no_grad():
             output, layers_data = model(Variable(img), CUDA, highest_layer)
 
+        # YOLO detection
         if not task_activate:
 
             output = write_results(output, confidence, num_classes, nms_conf = nms_thesh)
-            # if type(output) == int:
-            #     frames += 1
-            #     print("FPS of the video is {:5.4f}".format( frames / (time.time() - start)))
-            #     cv2.imshow("frame", frame)
-            #     key = cv2.waitKey(1)
-            #     if key & 0xFF == ord('q'):
-            #         break
-            #     continue
+
             im_dim = im_dim.repeat(output.size(0), 1)
             scaling_factor = torch.min(416/im_dim, 1)[0].view(-1, 1)
 
@@ -165,57 +165,78 @@ while cap.isOpened():
 
             classes = load_classes('data/coco.names')
             colors = pkl.load(open("pallete", "rb"))
-            list(map(lambda x: write(x, frame), output))
             target_rect, task_activate = task_manager(output, 'aeroplane')
+
+            # if target is detected
             if task_activate:
+                # get recommendation score of candidate layers and feature maps
                 recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data,
                                                                                                   layer_list, frame,
                                                                                                   target_rect)
-                heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
+                # rebuild target model from recommendated features
+                recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
                                                         recom_layers)
+                recom_heatmap = 0
+                for heatmap in recom_heatmap_list:
+                    recom_heatmap = recom_heatmap + cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
+                recom_heatmap = image_norm(recom_heatmap)
                 highest_layer = layer_list[max(recom_layers)]
-
-                plt.clf()
-                plt.subplot(1, 2, 1)
-                plt.imshow(heatmap_list[-1], cmap='jet')
-                # plt.colorbar(label='activation heatmap')
-                plt.subplot(1, 2, 2)
-                plt.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                plt.pause(0.001)
+                # initial tracker
+                roi = target_rect.copy()
+                roi[2] = roi[2] - roi[0]
+                roi[3] = roi[3] - roi[1]
+                tracker.init(roi, frame.copy(), recom_heatmap)
+                cv2.rectangle(frame, (target_rect[0], target_rect[1]), (target_rect[2], target_rect[3]), (0, 255, 0), 1)
 
         else:
 
             recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
                                                     recom_layers)
+            recom_heatmap = 0
+            for heatmap in recom_heatmap_list:
+                recom_heatmap = recom_heatmap + cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
+            recom_heatmap = image_norm(recom_heatmap)
 
-            recom_heatmap = recom_heatmap_list[-1]
-            recom_heatmap = cv2.resize(recom_heatmap, (frame.shape[1], frame.shape[0]))
+            boundingbox = tracker.update(frame.copy(), recom_heatmap)
+            boundingbox = list(map(int, boundingbox))
 
-            heatmap_overall = reconstruct_target_model(layers_data, layer_list, 0, 0, recom_layers)
+            cv2.rectangle(frame, (boundingbox[0], boundingbox[1]),
+                          (boundingbox[0] + boundingbox[2], boundingbox[1] + boundingbox[3]), (0, 255, 0), 1)
 
-            heatmap = heatmap_overall[-1]
-            heatmap = cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
+            # heatmap_overall = reconstruct_target_model(layers_data, layer_list, 0, 0, recom_layers)
+            # heatmap = heatmap_overall[-1]
+            # heatmap = cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
 
-            plt.clf()
-            plt.subplot(1, 3, 1)
-            plt.title(f'overall activation of layer {layer_list[recom_layers[-1]]}')
-            plt.imshow(heatmap, cmap='jet')
-            plt.subplot(1, 3, 2)
-            plt.title(f'recommended features of layer {layer_list[recom_layers[-1]]}')
-            plt.imshow(recom_heatmap, cmap='jet')
-            # plt.colorbar(label='activation heatmap')
-            plt.subplot(1, 3, 3)
-            plt.title('task = airplane')
-            plt.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            plt.pause(0.001)
+            # plt.clf()
+            # plt.subplot(1, 3, 1)
+            # plt.title(f'overall activation of layer {layer_list[recom_layers[-1]]}')
+            # plt.imshow(heatmap, cmap='jet')
+            # plt.subplot(1, 3, 2)
+            # plt.title(f'recommended features of layer {layer_list[recom_layers[-1]]}')
+            # plt.imshow(recom_heatmap, cmap='jet')
+            # # plt.colorbar(label='activation heatmap')
+            # plt.subplot(1, 3, 3)
+            # plt.title('task = airplane')
+            # plt.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            # plt.pause(0.001)
+
 
         frames += 1
-        print("FPS of the video is {:5.2f}".format( 1 / (time.time() - start)))
-        print(time.time() - start)
+        cv2.putText(frame, 'FPS: ' + str(1 / time.time() - start)[:4].strip('.'), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (0, 0, 255), 2)
+        cv2.imshow('tracking', frame)
+        c = cv2.waitKey(inteval) & 0xFF
+        if c == 27 or c == ord('q'):
+            break
+        # print("FPS of the video is {:5.2f}".format(1 / (time.time() - start)))
+        # print(time.time() - start)
+        # save_name = './results/frame_' + str(frames) + '.jpg'
+        # plt.savefig(save_name)
+
     else:
         break
 
-plt.show()
+# plt.show()
 
 
 
