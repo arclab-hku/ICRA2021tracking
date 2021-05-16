@@ -24,15 +24,12 @@ def findAll(matrix, value):
                 result.append((i,j))
     return result
 
-def getDistictiveScore(heatmap, rect, img = None):
+def getDistictiveScore(heatmap, rect):
     score = 0
     F_area = (rect[2] - rect[0]) * (rect[3] - rect[1])
     target_col = (rect[2] + rect[0])/2
     target_row = (rect[3] + rect[1])/2
     r = np.sqrt(((rect[2] - rect[0])/2) ** 2 + ((rect[3] - rect[1])/2) ** 2)
-    # img_resize = cv2.resize(img, heatmap.shape)
-    # cv2.rectangle(img_resize, (rect[0], rect[1]), (rect[2], rect[3]), (255, 0, 0), 1)
-    # plt.figure(num=1, figsize=(12, 6), dpi=80)
     if F_area > 0:
         mask = np.zeros(heatmap.shape, np.uint8)
         mask[rect[1]:rect[3], rect[0]:rect[2]] = 255
@@ -47,21 +44,6 @@ def getDistictiveScore(heatmap, rect, img = None):
         DT = statistics.mean(DT_list)
         GT = (np.sum(F) / F_area - np.sum(B) / (heatmap.shape[0] * heatmap.shape[1] - F_area)) ** 2
         score = DT * GT
-
-        # if score > 0:
-        #     plt.clf()
-        #     plt.subplot(1, 2, 1)
-        #     plt.title(f'score = {score}')
-        #     plt.imshow(heatmap, cmap='jet')
-        #     plt.gca().add_patch(Rectangle((rect[0], rect[1]), rect[2] - rect[0], rect[3] - rect[1], edgecolor = 'red', facecolor = 'none', lw = 1))
-        #     plt.colorbar(label='activation heatmap')
-        #     plt.subplot(1, 2, 2)
-        #     plt.title(f'd_i = {d_i}, r = {r}')
-        #     plt.imshow(img_resize)
-        #     plt.pause(0.01)
-        #     print('debug')
-
-    # plt.show()
 
     return score
 
@@ -226,13 +208,6 @@ def subwindow(img, window, borderType=cv2.BORDER_CONSTANT):
     limit(cutWindow, [0, 0, img.shape[1], img.shape[0]])  # modify cutWindow
     assert (cutWindow[2] > 0 and cutWindow[3] > 0)
     border = getBorder(window, cutWindow)
-    # cv2.namedWindow('tracking')
-    # cv2.rectangle(img, (cutWindow[0], cutWindow[1]), (cutWindow[0] + cutWindow[2], cutWindow[1] + cutWindow[3]), (0, 255, 0), 1)
-    # while True:
-    #     cv2.imshow('tracking', img)
-    #     c = cv2.waitKey(1) & 0xFF
-    #     if c == 27 or c == ord('q'):
-    #         break
     res = img[cutWindow[1]:cutWindow[1] + cutWindow[3], cutWindow[0]:cutWindow[0] + cutWindow[2]]
 
     if (border != [0, 0, 0, 0]):
@@ -246,19 +221,26 @@ class ORCFTracker:
         self.lambdar = 0.0001  # regularization
         self.padding = 1.5  # extra area surrounding the target
         self.output_sigma_factor = 0.125  # bandwidth of gaussian target
-
         self.interp_factor = 0.012  # linear interpolation factor for adaptation
         self.sigma = 0.6  # gaussian kernel bandwidth
         self.scale_step = 1 # scale adaptation
+        self.keyFrame = False
+        self.scale2keyframe_x = 1
+        self.scale2keyframe_y = 1
 
-        self._x_sz = [0, 0]  # cv::Size, [width,height]  #[int,int]
+        self._x_sz = [0, 0]  # template cv::Size, [width,height]  #[int,int]
         self._roi = [0., 0., 0., 0.]  # cv::Rect2f, [x,y,width,height]  #[float,float,float,float]
-        self.size_patch = [0, 0, 0]  # [int,int,int]
+        self.size_patch = [0, 0, 0]  # current patch size [int,int,int]
         self._alphaf = None  # numpy.ndarray    (size_patch[0], size_patch[1], 2)
         self._yf = None  # numpy.ndarray    (size_patch[0], size_patch[1], 2)
         self._x = None  # numpy.ndarray    (size_patch[0], size_patch[1])
         self.hann = None  # numpy.ndarray    cos window (size_patch[0], size_patch[1])
         self.cnnFeature = None # size = frame size
+        self._scale_x_buffer = []  # store scale of w
+        self._scale_y_buffer = []  # store scale of h
+        self._buffer_size = 5
+        self._keyFrame_span = [0, 0]
+        self._keyFrame_std = [0, 0]  # store std of feature activation
 
     def subPixelPeak(self, left, center, right):
         divisor = 2 * center - right - left  # float
@@ -280,22 +262,6 @@ class ORCFTracker:
         res = np.exp(mult * (y + x))
         return fftd(res)
 
-    # def gaussianCorrelation(self, x1, x2):
-    #
-    #     c = cv2.mulSpectrums(fftd(x1), fftd(x2), 0, conjB=True)  # 'conjB=' is necessary!
-    #
-    #     c = fftd(c, True)
-    #     c = real(c)
-    #     c = rearrange(c)
-    #
-    #     d = (np.sum(x1 * x1) + np.sum(x2 * x2) - 2.0 * c) / (
-    #                 self.size_patch[0] * self.size_patch[1] * self.size_patch[2])
-    #
-    #     d = d * (d >= 0)
-    #     d = np.exp(-d / (self.sigma * self.sigma))
-    #
-    #     return d
-
     def getTargetModel(self):
         extracted_roi = [0, 0, 0, 0]  # [int,int,int,int]
         cx = self._roi[0] + self._roi[2] / 2  # float
@@ -303,20 +269,15 @@ class ORCFTracker:
 
         padded_w = self._roi[2] * self.padding
         padded_h = self._roi[3] * self.padding
-        self._x_sz[0] = int(padded_w)
-        self._x_sz[1] = int(padded_h)
-        self._x_sz[0] = int(self._x_sz[0]) / 2 * 2
-        self._x_sz[1] = int(self._x_sz[1]) / 2 * 2
 
-        extracted_roi[2] = int(self.scale_step * self._x_sz[0])
-        extracted_roi[3] = int(self.scale_step * self._x_sz[1])
+        extracted_roi[2] = int(padded_w)
+        extracted_roi[3] = int(padded_h)
         extracted_roi[0] = int(cx - extracted_roi[2] / 2)
         extracted_roi[1] = int(cy - extracted_roi[3] / 2)
 
         FeaturesMap = subwindow(self.cnnFeature, extracted_roi, cv2.BORDER_REPLICATE)
         FeaturesMap = FeaturesMap.astype(np.float32) / 255.0 - 0.5
         self.size_patch = [FeaturesMap.shape[0], FeaturesMap.shape[1], 1]
-
         self.createHanningMats()  # create cos window need size_patch
 
         target_model_x = self.hann * FeaturesMap
@@ -340,6 +301,34 @@ class ORCFTracker:
 
         return p, pv
 
+    def scaleUpdate(self, target_feature, keyFrame = False):
+        locations = np.where(target_feature > 0.5 * target_feature.max())
+        y_list = locations[0]
+        x_list = locations[1]
+        y_span = y_list.max() - y_list.min()
+        x_span = x_list.max() - x_list.min()
+        sigma_y = np.std(y_list) # row
+        sigma_x = np.std(x_list) # col
+        scale_step_x = 1
+        scale_step_y = 1
+        if keyFrame:
+            self.scale2keyframe_x = 1
+            self.scale2keyframe_y = 1
+            self._keyFrame_span = [x_span, y_span]
+            self._keyFrame_std = [sigma_x, sigma_y]
+        else:
+            scale_step_x = 0.5 * x_span / self._keyFrame_span[0] + 0.5 * sigma_x / self._keyFrame_std[0]
+            scale_step_y = 0.5 * y_span / self._keyFrame_span[1] + 0.5 * sigma_y / self._keyFrame_std[1]
+
+        self._scale_x_buffer.append(scale_step_x)
+        self._scale_y_buffer.append(scale_step_y)
+
+        if len(self._scale_x_buffer) > self._buffer_size:
+           self.scale2keyframe_x = np.median(self._scale_x_buffer)
+           self.scale2keyframe_y = np.median(self._scale_y_buffer)
+           self._scale_x_buffer.pop()
+           self._scale_y_buffer.pop()
+
     def init(self, roi, image, cnnFeature):
         self.cnnFeature = cnnFeature
         self._roi = list(map(float, roi))
@@ -349,30 +338,55 @@ class ORCFTracker:
         xf = fftd(self._x)
         kf = cv2.mulSpectrums(xf, xf, 0, conjB=True)  # 'conjB=' is necessary!
         self._alphaf = complexDivision(self._yf, kf + self.lambdar)
+        self.cx = self._roi[0] + self._roi[2] / 2.
+        self.cy = self._roi[1] + self._roi[3] / 2.
+
+        self.keyFrame = True
+        target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
+        target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
+        self.scaleUpdate(target_feature, self.keyFrame)
+        self._x_sz = [self._roi[2], self._roi[3]]
+        self.keyFrame = False
 
     def update(self, image, cnnFeature):
         self.cnnFeature = cnnFeature
-        if (self._roi[0] + self._roi[2] <= 0):  self._roi[0] = -self._roi[2] + 1
-        if (self._roi[1] + self._roi[3] <= 0):  self._roi[1] = -self._roi[2] + 1
-        if (self._roi[0] >= image.shape[1] - 1):  self._roi[0] = image.shape[1] - 2
-        if (self._roi[1] >= image.shape[0] - 1):  self._roi[1] = image.shape[0] - 2
 
         cx = self._roi[0] + self._roi[2] / 2.
         cy = self._roi[1] + self._roi[3] / 2.
 
-        loc, peak_value = self.detect(self._x, self.getTargetModel())
+        x = self.getTargetModel()
+        x = cv2.resize(x, (self._x.shape[1], self._x.shape[0]))
 
-        self._roi[0] = cx - self._roi[2] / 2.0 + loc[0] * self.scale_step
-        self._roi[1] = cy - self._roi[3] / 2.0 + loc[1] * self.scale_step
+        loc, peak_value = self.detect(self._x, x)
 
-        if (self._roi[0] >= image.shape[1] - 1):  self._roi[0] = image.shape[1] - 1
-        if (self._roi[1] >= image.shape[0] - 1):  self._roi[1] = image.shape[0] - 1
-        if (self._roi[0] + self._roi[2] <= 0):  self._roi[0] = -self._roi[2] + 2
-        if (self._roi[1] + self._roi[3] <= 0):  self._roi[1] = -self._roi[3] + 2
-        assert (self._roi[2] > 0 and self._roi[3] > 0)
+        cx = cx + loc[0] * self.scale2keyframe_x
+        cy = cy + loc[1] * self.scale2keyframe_y
+        self._roi[0] = cx - self._roi[2] / 2.0
+        self._roi[1] = cy - self._roi[3] / 2.0
+
+        target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
+        target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
+        self.scaleUpdate(target_feature, self.keyFrame)
+        print([self.scale2keyframe_x, self.scale2keyframe_y])
+
+        self._roi[2] = self._x_sz[0] * self.scale2keyframe_x
+        self._roi[3] = self._x_sz[1] * self.scale2keyframe_y
+        self._roi[0] = cx - self._roi[2] / 2.0
+        self._roi[1] = cy - self._roi[3] / 2.0
+
+        # if out of view
+        if (self._roi[0] < 1):
+            self._roi[0] = 1
+        if (self._roi[1] < 1):
+            self._roi[1] = 1
+        if (self._roi[0] + self._roi[2] > cnnFeature.shape[1] - 1):
+            self._roi[2] = cnnFeature.shape[1] - 1 - self._roi[0]
+        if (self._roi[1] + self._roi[3] > cnnFeature.shape[0] - 1):
+            self._roi[3] = cnnFeature.shape[0] - 1 - self._roi[1]
 
         x = self.getTargetModel()
-        self._yf = self.createGaussianPeak(self.size_patch[0], self.size_patch[1])
+        x = cv2.resize(x, (self._x.shape[1], self._x.shape[0]))
+        self._yf = self.createGaussianPeak(x.shape[0], x.shape[1])
         xf = fftd(x)
         kf = cv2.mulSpectrums(xf, xf, 0, conjB=True)  # 'conjB=' is necessary!
         alphaf = complexDivision(self._yf, kf + self.lambdar)
@@ -381,4 +395,4 @@ class ORCFTracker:
 
         self.scale_step = 1
 
-        return self._roi
+        return self._roi, target_feature
