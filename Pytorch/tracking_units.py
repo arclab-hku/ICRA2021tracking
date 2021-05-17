@@ -4,6 +4,8 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+from scipy.signal import medfilt
+import math
 
 def image_norm(img):
     contrast = img.max() - img.min()
@@ -214,6 +216,17 @@ def subwindow(img, window, borderType=cv2.BORDER_CONSTANT):
         res = cv2.copyMakeBorder(res, border[1], border[3], border[0], border[2], borderType)
     return res
 
+def weighted_avg_and_std(values, weights):
+    """
+    Return the weighted average and standard deviation.
+
+    values, weights -- Numpy ndarrays with the same shape.
+    """
+    average = np.average(values, weights=weights)
+    # Fast and numerically precise:
+    variance = np.average((values-average)**2, weights=weights)
+    return average, math.sqrt(variance)
+
 
 # ORCF tracker
 class ORCFTracker:
@@ -221,9 +234,9 @@ class ORCFTracker:
         self.lambdar = 0.0001  # regularization
         self.padding = 1.5  # extra area surrounding the target
         self.output_sigma_factor = 0.125  # bandwidth of gaussian target
-        self.interp_factor = 0.012  # linear interpolation factor for adaptation
+        # self.interp_factor = 0.012  # linear interpolation factor for adaptation
+        self.interp_factor = 0.2  # linear interpolation factor for adaptation
         self.sigma = 0.6  # gaussian kernel bandwidth
-        self.scale_step = 1 # scale adaptation
         self.keyFrame = False
         self.scale2keyframe_x = 1
         self.scale2keyframe_y = 1
@@ -239,8 +252,8 @@ class ORCFTracker:
         self._scale_x_buffer = []  # store scale of w
         self._scale_y_buffer = []  # store scale of h
         self._buffer_size = 5
-        self._keyFrame_span = [0, 0]
-        self._keyFrame_std = [0, 0]  # store std of feature activation
+        self._keyFrame_buffer = []
+        self._keyFrame_meanstd = [0., 0., 0.]  # store [mean, std x, std y] of feature activation
 
     def subPixelPeak(self, left, center, right):
         divisor = 2 * center - right - left  # float
@@ -275,14 +288,14 @@ class ORCFTracker:
         extracted_roi[0] = int(cx - extracted_roi[2] / 2)
         extracted_roi[1] = int(cy - extracted_roi[3] / 2)
 
-        FeaturesMap = subwindow(self.cnnFeature, extracted_roi, cv2.BORDER_REPLICATE)
-        FeaturesMap = FeaturesMap.astype(np.float32) / 255.0 - 0.5
+        searchingRegion = subwindow(self.cnnFeature, extracted_roi, cv2.BORDER_REPLICATE)
+        FeaturesMap = searchingRegion.astype(np.float32) / 255.0 - 0.5
         self.size_patch = [FeaturesMap.shape[0], FeaturesMap.shape[1], 1]
         self.createHanningMats()  # create cos window need size_patch
 
         target_model_x = self.hann * FeaturesMap
 
-        return target_model_x
+        return target_model_x, searchingRegion
 
     def detect(self, z, x):
         kzf = cv2.mulSpectrums(fftd(x), fftd(z), 0, conjB=True)
@@ -301,52 +314,54 @@ class ORCFTracker:
 
         return p, pv
 
-    def scaleUpdate(self, target_feature, keyFrame = False):
-        locations = np.where(target_feature > 0.5 * target_feature.max())
+    def scaleUpdate(self, target_region):
+        mean_activation = np.mean(target_region)
+        locations = np.where(target_region > 0.5 * target_region.max())
         y_list = locations[0]
         x_list = locations[1]
-        y_span = y_list.max() - y_list.min()
-        x_span = x_list.max() - x_list.min()
-        sigma_y = np.std(y_list) # row
-        sigma_x = np.std(x_list) # col
-        scale_step_x = 1
-        scale_step_y = 1
-        if keyFrame:
-            self.scale2keyframe_x = 1
-            self.scale2keyframe_y = 1
-            self._keyFrame_span = [x_span, y_span]
-            self._keyFrame_std = [sigma_x, sigma_y]
+        pixel_list = target_region[y_list, x_list]
+        _, sigma_x = weighted_avg_and_std(x_list, pixel_list)
+        _, sigma_y = weighted_avg_and_std(y_list, pixel_list)
+        if self.keyFrame:
+            self._keyFrame_buffer.append([sum(pixel_list), mean_activation, sigma_x, sigma_y])
+            if len(self._keyFrame_buffer) == self._buffer_size:
+                self.keyFrame = False
+                self._keyFrame_meanstd = np.mean(self._keyFrame_buffer, axis=0)
         else:
-            scale_step_x = 0.5 * x_span / self._keyFrame_span[0] + 0.5 * sigma_x / self._keyFrame_std[0]
-            scale_step_y = 0.5 * y_span / self._keyFrame_span[1] + 0.5 * sigma_y / self._keyFrame_std[1]
+            sumRatio = sum(pixel_list) / self._keyFrame_meanstd[0]
+            meanRatio = mean_activation / self._keyFrame_meanstd[1]
+            r = sumRatio * meanRatio
+            scale_step_x = 0.9 * r + 0.1 * sigma_x / self._keyFrame_meanstd[2]
+            scale_step_y = 0.9 * r + 0.1 * sigma_y / self._keyFrame_meanstd[3]
+            self._scale_x_buffer.append(scale_step_x)
+            self._scale_y_buffer.append(scale_step_y)
 
-        self._scale_x_buffer.append(scale_step_x)
-        self._scale_y_buffer.append(scale_step_y)
-
-        if len(self._scale_x_buffer) > self._buffer_size:
-           self.scale2keyframe_x = np.median(self._scale_x_buffer)
-           self.scale2keyframe_y = np.median(self._scale_y_buffer)
-           self._scale_x_buffer.pop()
-           self._scale_y_buffer.pop()
+        if len(self._scale_x_buffer) == self._buffer_size:
+            medfilt(self._scale_x_buffer, 3)
+            medfilt(self._scale_y_buffer, 3)
+            # self.scale2keyframe_x = self._scale_x_buffer[1]
+            # self.scale2keyframe_y = self._scale_y_buffer[1]
+            self.scale2keyframe_x = np.mean(self._scale_x_buffer)
+            self.scale2keyframe_y = np.mean(self._scale_y_buffer)
+            self._scale_x_buffer.pop()
+            self._scale_y_buffer.pop()
 
     def init(self, roi, image, cnnFeature):
         self.cnnFeature = cnnFeature
         self._roi = list(map(float, roi))
         assert (roi[2] > 0 and roi[3] > 0)
-        self._x = self.getTargetModel()
+        self._x, searchingRegion = self.getTargetModel()
         self._yf = self.createGaussianPeak(self.size_patch[0], self.size_patch[1])
         xf = fftd(self._x)
         kf = cv2.mulSpectrums(xf, xf, 0, conjB=True)  # 'conjB=' is necessary!
         self._alphaf = complexDivision(self._yf, kf + self.lambdar)
-        self.cx = self._roi[0] + self._roi[2] / 2.
-        self.cy = self._roi[1] + self._roi[3] / 2.
 
         self.keyFrame = True
-        target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
-        target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
-        self.scaleUpdate(target_feature, self.keyFrame)
+        # target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
+        # target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
+        # self.scaleUpdate(target_feature)
+        self.scaleUpdate(searchingRegion)
         self._x_sz = [self._roi[2], self._roi[3]]
-        self.keyFrame = False
 
     def update(self, image, cnnFeature):
         self.cnnFeature = cnnFeature
@@ -354,7 +369,7 @@ class ORCFTracker:
         cx = self._roi[0] + self._roi[2] / 2.
         cy = self._roi[1] + self._roi[3] / 2.
 
-        x = self.getTargetModel()
+        x, searchingRegion = self.getTargetModel()
         x = cv2.resize(x, (self._x.shape[1], self._x.shape[0]))
 
         loc, peak_value = self.detect(self._x, x)
@@ -364,9 +379,10 @@ class ORCFTracker:
         self._roi[0] = cx - self._roi[2] / 2.0
         self._roi[1] = cy - self._roi[3] / 2.0
 
-        target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
-        target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
-        self.scaleUpdate(target_feature, self.keyFrame)
+        # target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
+        # target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
+        # self.scaleUpdate(target_feature)
+        self.scaleUpdate(searchingRegion)
         print([self.scale2keyframe_x, self.scale2keyframe_y])
 
         self._roi[2] = self._x_sz[0] * self.scale2keyframe_x
@@ -384,7 +400,7 @@ class ORCFTracker:
         if (self._roi[1] + self._roi[3] > cnnFeature.shape[0] - 1):
             self._roi[3] = cnnFeature.shape[0] - 1 - self._roi[1]
 
-        x = self.getTargetModel()
+        x, searchingRegion = self.getTargetModel()
         x = cv2.resize(x, (self._x.shape[1], self._x.shape[0]))
         self._yf = self.createGaussianPeak(x.shape[0], x.shape[1])
         xf = fftd(x)
@@ -393,6 +409,4 @@ class ORCFTracker:
         self._x = (1 - self.interp_factor) * self._x + self.interp_factor * x
         self._alphaf = (1 - self.interp_factor) * self._alphaf + self.interp_factor * alphaf
 
-        self.scale_step = 1
-
-        return self._roi, target_feature
+        return self._roi, searchingRegion

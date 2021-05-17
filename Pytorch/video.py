@@ -7,6 +7,7 @@ import numpy as np
 import cv2 
 from util import *
 from tracking_units import *
+# from tracking_units_backup import *
 import argparse
 import os 
 import os.path as osp
@@ -126,8 +127,11 @@ recom_idx_list = []
 recom_score_list = []
 recom_layers = []
 multiscale_flag = True
+target_feature = None
+# spatiotemporal_buffer_size = 5
 tracker = ORCFTracker(multiscale_flag)
 cv2.namedWindow('tracking')
+# cv2.namedWindow('target feature')
 inteval = 1
 
 # start loading video
@@ -187,7 +191,7 @@ while cap.isOpened():
                 roi[3] = roi[3] - roi[1]
                 tracker.init(roi, frame.copy(), recom_heatmap)
                 cv2.rectangle(frame, (target_rect[0], target_rect[1]), (target_rect[2], target_rect[3]), (0, 255, 0), 1)
-
+                # target_feature = recom_heatmap[target_rect[1]:target_rect[3], target_rect[0]:target_rect[2]]
         else:
 
             recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
@@ -197,7 +201,7 @@ while cap.isOpened():
                 recom_heatmap = recom_heatmap + cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
             recom_heatmap = image_norm(recom_heatmap)
 
-            boundingbox = tracker.update(frame.copy(), recom_heatmap)
+            boundingbox, target_feature = tracker.update(frame.copy(), recom_heatmap)
             boundingbox = list(map(int, boundingbox))
 
             cv2.rectangle(frame, (boundingbox[0], boundingbox[1]),
@@ -222,9 +226,10 @@ while cap.isOpened():
 
 
         frames += 1
-        cv2.putText(frame, 'FPS: ' + str(1 / time.time() - start)[:4].strip('.'), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+        cv2.putText(frame, 'FPS: ' + str(1 / (time.time() - start)), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 0, 255), 2)
         cv2.imshow('tracking', frame)
+        # cv2.imshow('target feature', target_feature)
         c = cv2.waitKey(inteval) & 0xFF
         if c == 27 or c == ord('q'):
             break
