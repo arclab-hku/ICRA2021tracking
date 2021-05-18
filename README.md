@@ -19,7 +19,13 @@ Run the main entry file demo.m to see the tracking results
 
 For Pytorch version
 
-Please waiting for update
+Make sure you can successfully run yolo v3
+
+Download yolo weights into ./weight
+
+video_demo.py: plot cnn features output for algorithm demonstration
+
+UAV_tracking_demo.py: you are free to modify yaml file for other test
 
 Contact:
 Ran Duan: 	rduan036@gmail.com

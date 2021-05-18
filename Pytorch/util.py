@@ -5,7 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F 
 from torch.autograd import Variable
 import numpy as np
-import cv2 
+import cv2
+import yaml
 
 def unique(tensor):
     tensor_np = tensor.cpu().numpy()
@@ -107,8 +108,6 @@ def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
     batch_size = prediction.size(0)
 
     write = False
-    
-
 
     for ind in range(batch_size):
         image_pred = prediction[ind]          #image Tensor
@@ -213,3 +212,35 @@ def load_classes(namesfile):
     fp = open(namesfile, "r")
     names = fp.read().split("\n")[:-1]
     return names
+
+
+class TaskInfo:
+    def __init__(self):
+        self.yolo_cfg_path = './config/yolov3.cfg'
+        self.yolo_weight_path = './weight/yolov3.weights'
+        self.yolo_net_resolution = 416
+        self.yolo_batch_size = 1
+        self.yolo_confidence = 0.5
+        self.yolo_nms_thresh = 0.4
+        self.yolo_num_classes = 80
+        self.yolo_classes_data = './classes/coco.names'
+        self.video_path = './data/f35.mp4'
+        self.tracking_object = 'aeroplane'
+        self.candidate_layer_list = range(12, 36)
+
+    def load_TaskInfo(self, yaml_fname):
+        # Parse
+        with open(yaml_fname, "r") as file_handle:
+            yaml_info = yaml.load(file_handle)
+        # Parse
+        self.yolo_cfg_path = yaml_info["yolo_cfg_path"]
+        self.yolo_weight_path = yaml_info["yolo_weight_path"]
+        self.yolo_net_resolution = yaml_info["yolo_net_resolution"]
+        self.yolo_batch_size = yaml_info["yolo_batch_size"]
+        self.yolo_confidence = yaml_info["yolo_confidence"]
+        self.yolo_nms_thresh = yaml_info["yolo_nms_thresh"]
+        self.yolo_num_classes = yaml_info["yolo_num_classes"]
+        self.yolo_classes_data = yaml_info["yolo_classes_data"]
+        self.video_path = yaml_info["video_path"]
+        self.tracking_object = yaml_info["tracking_object"]
+        self.candidate_layer_list = yaml_info["candidate_layer_list"]

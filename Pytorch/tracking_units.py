@@ -231,12 +231,12 @@ def weighted_avg_and_std(values, weights):
 # ORCF tracker
 class ORCFTracker:
     def __init__(self, multiscale=False):
-        self.lambdar = 0.0001  # regularization
+        self.lambdar = 0.001  # regularization
         self.padding = 1.5  # extra area surrounding the target
         self.output_sigma_factor = 0.125  # bandwidth of gaussian target
         # self.interp_factor = 0.012  # linear interpolation factor for adaptation
-        self.interp_factor = 0.2  # linear interpolation factor for adaptation
-        self.sigma = 0.6  # gaussian kernel bandwidth
+        self.interp_factor = 0.1  # linear interpolation factor for adaptation
+        self.sigma = 0.5  # gaussian kernel bandwidth
         self.keyFrame = False
         self.scale2keyframe_x = 1
         self.scale2keyframe_y = 1
@@ -383,7 +383,7 @@ class ORCFTracker:
         # target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
         # self.scaleUpdate(target_feature)
         self.scaleUpdate(searchingRegion)
-        print([self.scale2keyframe_x, self.scale2keyframe_y])
+        # print([self.scale2keyframe_x, self.scale2keyframe_y])
 
         self._roi[2] = self._x_sz[0] * self.scale2keyframe_x
         self._roi[3] = self._x_sz[1] * self.scale2keyframe_y

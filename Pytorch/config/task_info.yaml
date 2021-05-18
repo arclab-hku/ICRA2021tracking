@@ -1,0 +1,11 @@
+yolo_cfg_path: ./config/yolov3.cfg
+yolo_weight_path: ./weight/yolov3.weights
+yolo_net_resolution: 416
+yolo_batch_size: 1
+yolo_confidence: 0.9
+yolo_nms_thresh: 0.4
+yolo_num_classes: 80
+yolo_classes_data: ./classes/coco.names
+video_path: ./data/1.avi
+tracking_object: traffic light
+candidate_layer_list: [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
