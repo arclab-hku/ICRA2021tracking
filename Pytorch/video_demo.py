@@ -27,7 +27,7 @@ num_classes = int(task_info.yolo_num_classes)
 classes = load_classes(task_info.yolo_classes_data)
 videofile = task_info.video_path
 target_class = task_info.tracking_object
-layer_list = task_info.candidate_layer_list
+layer_list = task_info.candidate_layer_range
 
 # init yolo
 colors = pkl.load(open("pallete", "rb"))
@@ -55,6 +55,8 @@ tracker.sigma = task_info.tracker_kernel_sigma  # gaussian kernel bandwidth, cos
 tracker.output_sigma_factor = task_info.tracker_output_sigma
 tracker.interp_factor = task_info.tracker_interp_factor
 tracker.scale_gamma = task_info.tracker_scale_gamma
+tracker_activate_thresh = task_info.tracker_activate_thresh
+detect_counter = 0
 
 def write(x, results):
     c1 = tuple(x[1:3].int())
@@ -73,15 +75,20 @@ def write(x, results):
 def task_manager(yolo_detection, target_class, select_rule = 'first_detected'):
     rect = [0, 0, 0, 0]
     task_activate = False
+    global detect_counter
     for x in yolo_detection:
         cls = int(x[-1])
         label = "{0}".format(classes[cls])
         if select_rule == 'first_detected':
             if label == target_class:
-                rect[0:2] = x[1:3].int().cpu().numpy()
-                rect[2:4] = x[3:5].int().cpu().numpy()
-                task_activate = True
+                detect_counter = detect_counter + 1
+                if detect_counter == tracker_activate_thresh:
+                    rect[0:2] = x[1:3].int().cpu().numpy()
+                    rect[2:4] = x[3:5].int().cpu().numpy()
+                    task_activate = True
                 break
+            else:
+                detect_counter = 0
     return rect, task_activate
 
 # ====================================================================================
@@ -174,9 +181,11 @@ while cap.isOpened():
 
             boundingbox, target_feature = tracker.update(frame.copy(), recom_heatmap)
             boundingbox = list(map(int, boundingbox))
-
-            cv2.rectangle(frame, (boundingbox[0], boundingbox[1]),
-                          (boundingbox[0] + boundingbox[2], boundingbox[1] + boundingbox[3]), (0, 255, 0), 2)
+            x1 = boundingbox[0]
+            y1 = boundingbox[1]
+            x2 = boundingbox[0] + boundingbox[2]
+            y2 = boundingbox[1] + boundingbox[3]
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
             FPS = int(1 / (time.time() - start))
 

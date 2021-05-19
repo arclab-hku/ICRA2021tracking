@@ -240,7 +240,11 @@ class ORCFTracker:
         self.hann = None  # numpy.ndarray    cos window (size_patch[0], size_patch[1])
         self.cnnFeature = None  # size = frame size
         self.size_patch = [0, 0, 0]  # current patch size [int,int,int]
+        self.confidence = 1
+        self.hist_base = None
 
+        self._scale2img_x = 1.0
+        self._scale2img_y = 1.0
         self._x_sz = [0, 0]  # template cv::Size, [width,height]  #[int,int]
         self._roi = [0., 0., 0., 0.]  # cv::Rect2f, [x,y,width,height]  #[float,float,float,float]
         self._alphaf = None  # numpy.ndarray    (size_patch[0], size_patch[1], 2)
@@ -253,6 +257,9 @@ class ORCFTracker:
         self._buffer_size = 5
         self._keyFrame_buffer = []
         self._keyFrame_meanstd = [0., 0., 0.]  # store [mean, std x, std y] of feature activation
+        self._histSize = [50, 60]
+        self._ranges = [0, 180] + [0, 256]
+        self._channels = [0, 1]
 
     def subPixelPeak(self, left, center, right):
         divisor = 2 * center - right - left  # float
@@ -346,9 +353,18 @@ class ORCFTracker:
             self._scale_y_buffer.pop()
 
     def init(self, roi, image, cnnFeature):
-        self.cnnFeature = cnnFeature
+        original_target = subwindow(image, roi, cv2.BORDER_REPLICATE)
+        hsv_base = cv2.cvtColor(original_target, cv2.COLOR_BGR2HSV)
+        self.hist_base = cv2.calcHist([hsv_base], self._channels, None, self._histSize, self._ranges, accumulate=False)
+        cv2.normalize(self.hist_base, self.hist_base, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
         self._roi = list(map(float, roi))
-        assert (roi[2] > 0 and roi[3] > 0)
+        self.cnnFeature = cnnFeature
+        self._scale2img_x = image.shape[1] / cnnFeature.shape[1]
+        self._scale2img_y = image.shape[0] / cnnFeature.shape[0]
+        self._roi[0] = self._roi[0] / self._scale2img_x
+        self._roi[1] = self._roi[1] / self._scale2img_y
+        self._roi[2] = self._roi[2] / self._scale2img_x
+        self._roi[3] = self._roi[3] / self._scale2img_y
         self._x, searchingRegion = self.getTargetModel()
         self._yf = self.createGaussianPeak(self.size_patch[0], self.size_patch[1])
         xf = fftd(self._x)
@@ -356,10 +372,10 @@ class ORCFTracker:
         self._alphaf = complexDivision(self._yf, kf + self.lambdar)
 
         self.keyFrame = True
-        # target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
-        # target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
-        # self.scaleUpdate(target_feature)
-        self.scaleUpdate(searchingRegion)
+        target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
+        target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
+        self.scaleUpdate(target_feature)
+        # self.scaleUpdate(searchingRegion)
         self._x_sz = [self._roi[2], self._roi[3]]
 
     def update(self, image, cnnFeature):
@@ -378,10 +394,10 @@ class ORCFTracker:
         self._roi[0] = cx - self._roi[2] / 2.0
         self._roi[1] = cy - self._roi[3] / 2.0
 
-        # target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
-        # target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
-        # self.scaleUpdate(target_feature)
-        self.scaleUpdate(searchingRegion)
+        target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
+        target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
+        self.scaleUpdate(target_feature)
+        # self.scaleUpdate(searchingRegion)
         # print([self.scale2keyframe_x, self.scale2keyframe_y])
 
         self._roi[2] = self._x_sz[0] * self._scale2keyframe_x
@@ -407,5 +423,15 @@ class ORCFTracker:
         alphaf = complexDivision(self._yf, kf + self.lambdar)
         self._x = (1 - self.interp_factor) * self._x + self.interp_factor * x
         self._alphaf = (1 - self.interp_factor) * self._alphaf + self.interp_factor * alphaf
+        # return tracking result
+        target_roi = [self._roi[0] * self._scale2img_x, self._roi[1] * self._scale2img_y, self._roi[2] * self._scale2img_x, self._roi[3] * self._scale2img_y]
+        extract_roi = list(map(int, target_roi))
+        current_target = subwindow(image, extract_roi, cv2.BORDER_REPLICATE)
+        hsv_test = cv2.cvtColor(current_target, cv2.COLOR_BGR2HSV)
+        hist_test = cv2.calcHist([hsv_test], self._channels, None, self._histSize, self._ranges, accumulate=False)
+        cv2.normalize(hist_test, hist_test, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+        hist_check = cv2.compareHist(self.hist_base, hist_test, 0)
+        # self.confidence = hist_check
+        self.confidence = x.max() + hist_check
 
-        return self._roi, searchingRegion
+        return target_roi, searchingRegion

@@ -39,7 +39,7 @@ num_classes = int(task_info.yolo_num_classes)
 classes = load_classes(task_info.yolo_classes_data)
 videofile = task_info.video_path
 target_class = task_info.tracking_object
-layer_list = task_info.candidate_layer_list
+layer_list = task_info.candidate_layer_range
 # init yolo
 colors = pkl.load(open("pallete", "rb"))
 start_time = 0
@@ -64,6 +64,10 @@ tracker.sigma = task_info.tracker_kernel_sigma  # gaussian kernel bandwidth, cos
 tracker.output_sigma_factor = task_info.tracker_output_sigma
 tracker.interp_factor = task_info.tracker_interp_factor
 tracker.scale_gamma = task_info.tracker_scale_gamma
+tracker_activate_thresh = task_info.tracker_activate_thresh
+detect_counter = 0
+lost_counter = 0
+tracking_counter = 0
 
 def write(x, results):
     c1 = tuple(x[1:3].int())
@@ -79,18 +83,57 @@ def write(x, results):
     cv2.putText(img, label, (c1[0], c1[1] + t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 1, [225, 255, 255], 1)
     return img
 
+# mouse callback function
+def draw_boundingbox(event, x, y, flags, param):
+    global selectingObject, initTracking, onTracking, ix, iy, cx, cy, w, h
+
+    if event == cv2.EVENT_LBUTTONDOWN:
+        selectingObject = True
+        onTracking = False
+        ix, iy = x, y
+        cx, cy = x, y
+
+    elif event == cv2.EVENT_MOUSEMOVE:
+        cx, cy = x, y
+
+    elif event == cv2.EVENT_LBUTTONUP:
+        selectingObject = False
+        if (abs(x - ix) > 10 and abs(y - iy) > 10):
+            w, h = abs(x - ix), abs(y - iy)
+            ix, iy = min(x, ix), min(y, iy)
+            initTracking = True
+        else:
+            onTracking = False
+
+    elif event == cv2.EVENT_RBUTTONDOWN:
+        onTracking = False
+        if (w > 0):
+            ix, iy = x - w / 2, y - h / 2
+            initTracking = True
+
 def task_manager(yolo_detection, target_class, select_rule = 'first_detected'):
     rect = [0, 0, 0, 0]
     task_activate = False
+    global detect_counter
+    global lost_counter
     for x in yolo_detection:
         cls = int(x[-1])
         label = "{0}".format(classes[cls])
         if select_rule == 'first_detected':
             if label == target_class:
-                rect[0:2] = x[1:3].int().cpu().numpy()
-                rect[2:4] = x[3:5].int().cpu().numpy()
-                task_activate = True
+                detect_counter += 1
+                lost_counter = 0
+                if detect_counter == tracker_activate_thresh:
+                    rect[0:2] = x[1:3].int().cpu().numpy()
+                    rect[2:4] = x[3:5].int().cpu().numpy()
+                    task_activate = True
+                    detect_counter = 0
+                    lost_counter = 0
                 break
+            else:
+                lost_counter += 1
+                if lost_counter > 3:
+                    detect_counter = 0
     return rect, task_activate
 
 # ====================================================================================
@@ -107,6 +150,14 @@ recom_score_list = []
 recom_layers = []
 target_feature = None
 cv2.namedWindow('tracking')
+# for manual selecting
+selectingObject = False
+initTracking = False
+onTracking = False
+ix, iy, cx, cy = -1, -1, -1, -1
+w, h = 0, 0
+cv2.setMouseCallback('tracking', draw_boundingbox)
+# cv2.namedWindow('target feature')
 inteval = 1
 # start loading video
 while cap.isOpened():
@@ -124,68 +175,117 @@ while cap.isOpened():
         with torch.no_grad():
             output, layers_data = model(Variable(img), CUDA, highest_layer)
 
-        # YOLO detection
         if not task_activate:
+            # manual selecting target for tracking untrained object
+            if (selectingObject):
+                task_activate = False
+                highest_layer = -1
+                cv2.rectangle(frame, (ix, iy), (cx, cy), (0, 255, 255), 1)
+            elif (initTracking):
+                cv2.rectangle(frame, (ix, iy), (ix + w, iy + h), (0, 255, 255), 2)
+                task_activate = True
+                target_rect = [ix, iy, cx, cy]
+                recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data,
+                                                                                                  layer_list, frame,
+                                                                                                  target_rect, 10, 10)
+                # rebuild target model from recommendated features
+                recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
+                                                              recom_layers)
+                recom_heatmap = 0
+                for heatmap in recom_heatmap_list:
+                    recom_heatmap = recom_heatmap + cv2.resize(heatmap, (52, 52))
+                    # recom_heatmap += heatmap
+                recom_heatmap = image_norm(recom_heatmap)
+                highest_layer = layer_list[max(recom_layers)]
+                # initial tracker
+                roi = target_rect.copy()
+                roi[2] = roi[2] - roi[0]
+                roi[3] = roi[3] - roi[1]
+                tracker.init(roi, frame.copy(), recom_heatmap)
+                cv2.rectangle(frame, (target_rect[0], target_rect[1]), (target_rect[2], target_rect[3]), (0, 255, 0), 1)
+            else:
+                # find tracking object by YOLO detection
+                output = write_results(output, confidence, num_classes, nms_conf = nms_thesh)
+                if torch.is_tensor(output):
+                    im_dim = im_dim.repeat(output.size(0), 1)
+                    scaling_factor = torch.min(inp_dim/im_dim, 1)[0].view(-1, 1)
 
-            output = write_results(output, confidence, num_classes, nms_conf = nms_thesh)
-            if torch.is_tensor(output):
-                im_dim = im_dim.repeat(output.size(0), 1)
-                scaling_factor = torch.min(inp_dim/im_dim, 1)[0].view(-1, 1)
+                    output[:, [1, 3]] -= (inp_dim - scaling_factor*im_dim[:, 0].view(-1, 1))/2
+                    output[:, [2, 4]] -= (inp_dim - scaling_factor*im_dim[:, 1].view(-1, 1))/2
 
-                output[:, [1, 3]] -= (inp_dim - scaling_factor*im_dim[:, 0].view(-1, 1))/2
-                output[:, [2, 4]] -= (inp_dim - scaling_factor*im_dim[:, 1].view(-1, 1))/2
+                    output[:, 1:5] /= scaling_factor
 
-                output[:, 1:5] /= scaling_factor
+                    for i in range(output.shape[0]):
+                        output[i, [1, 3]] = torch.clamp(output[i, [1, 3]], 0.0, im_dim[i, 0])
+                        output[i, [2, 4]] = torch.clamp(output[i, [2, 4]], 0.0, im_dim[i, 1])
 
-                for i in range(output.shape[0]):
-                    output[i, [1, 3]] = torch.clamp(output[i, [1, 3]], 0.0, im_dim[i, 0])
-                    output[i, [2, 4]] = torch.clamp(output[i, [2, 4]], 0.0, im_dim[i, 1])
+                    target_rect, task_activate = task_manager(output, target_class)
 
-                target_rect, task_activate = task_manager(output, target_class)
-
-                # if target is detected
-                if task_activate:
-                    # get recommendation score of candidate layers and feature maps
-                    recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data,
-                                                                                                      layer_list, frame,
-                                                                                                      target_rect)
-                    # rebuild target model from recommendated features
-                    recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
-                                                            recom_layers)
-                    recom_heatmap = 0
-                    for heatmap in recom_heatmap_list:
-                        recom_heatmap = recom_heatmap + cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
-                    recom_heatmap = image_norm(recom_heatmap)
-                    highest_layer = layer_list[max(recom_layers)]
-                    # initial tracker
-                    roi = target_rect.copy()
-                    roi[2] = roi[2] - roi[0]
-                    roi[3] = roi[3] - roi[1]
-                    tracker.init(roi, frame.copy(), recom_heatmap)
-                    cv2.rectangle(frame, (target_rect[0], target_rect[1]), (target_rect[2], target_rect[3]), (0, 255, 0), 1)
-                else:
-                    list(map(lambda x: write(x, frame), output))
+                    # if target is detected
+                    if task_activate:
+                        # get recommendation score of candidate layers and feature maps
+                        if not recom_idx_list:
+                            recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data,
+                                                                                                              layer_list, frame,
+                                                                                                              target_rect,
+                                                                                                              10, 5)
+                        # rebuild target model from recommendated features
+                        recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
+                                                                recom_layers)
+                        recom_heatmap = 0
+                        for heatmap in recom_heatmap_list:
+                            recom_heatmap = recom_heatmap + cv2.resize(heatmap, (52, 52))
+                            # recom_heatmap += heatmap
+                        recom_heatmap = image_norm(recom_heatmap)
+                        highest_layer = layer_list[max(recom_layers)]
+                        # initial tracker
+                        roi = target_rect.copy()
+                        roi[2] = roi[2] - roi[0]
+                        roi[3] = roi[3] - roi[1]
+                        tracker.init(roi, frame.copy(), recom_heatmap)
+                        cv2.rectangle(frame, (target_rect[0], target_rect[1]), (target_rect[2], target_rect[3]), (0, 255, 0), 1)
+                    else:
+                        list(map(lambda x: write(x, frame), output))
         else:
 
             recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
                                                     recom_layers)
             recom_heatmap = 0
             for heatmap in recom_heatmap_list:
-                recom_heatmap = recom_heatmap + cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
+                # recom_heatmap = recom_heatmap + cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
+                recom_heatmap += heatmap
             recom_heatmap = image_norm(recom_heatmap)
 
             boundingbox, target_feature = tracker.update(frame.copy(), recom_heatmap)
             boundingbox = list(map(int, boundingbox))
+            x1 = boundingbox[0]
+            y1 = boundingbox[1]
+            x2 = boundingbox[0] + boundingbox[2]
+            y2 = boundingbox[1] + boundingbox[3]
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-            cv2.rectangle(frame, (boundingbox[0], boundingbox[1]),
-                          (boundingbox[0] + boundingbox[2], boundingbox[1] + boundingbox[3]), (0, 255, 0), 2)
+            if tracker.confidence < 0.3:
+                task_activate = False
+                highest_layer = -1
+                selectingObject = False
+                initTracking = False
+                onTracking = False
+                ix, iy, cx, cy = -1, -1, -1, -1
+                w, h = 0, 0
+                # tracking_counter = 0
+
+            # target_feature = cv2.applyColorMap(target_feature, cv2.COLORMAP_JET)
+            # cv2.putText(target_feature, 'c: ' + str(tracker.confidence), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+            #             (0, 0, 0), 1)
+            # cv2.imshow('target feature', target_feature)
+            # tracking_counter += 1
+            # print(tracker.confidence)
 
         FPS = int(1 / (time.time() - start_time))
         frames += 1
         cv2.putText(frame, 'FPS: ' + str(FPS), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 255, 0), 2)
         cv2.imshow('tracking', frame)
-        # cv2.imshow('target feature', target_feature)
         c = cv2.waitKey(inteval) & 0xFF
         if c == 27 or c == ord('q'):
             break
