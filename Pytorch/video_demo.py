@@ -42,13 +42,19 @@ model.net_info["height"] = int(task_info.yolo_net_resolution)
 inp_dim = int(model.net_info["height"])
 assert inp_dim % 32 == 0
 assert inp_dim > 32
-
 #If there's a GPU availible, put the model on GPU
 if CUDA:
     model.cuda()
-
 #Set the model in evaluation mode
 model.eval()
+# tracker initialize
+tracker = ORCFTracker()
+tracker.padding = task_info.tracker_padding # regularization
+tracker.lambdar = task_info.tracker_lambdar
+tracker.sigma = task_info.tracker_kernel_sigma  # gaussian kernel bandwidth, coswindow
+tracker.output_sigma_factor = task_info.tracker_output_sigma
+tracker.interp_factor = task_info.tracker_interp_factor
+tracker.scale_gamma = task_info.tracker_scale_gamma
 
 def write(x, results):
     c1 = tuple(x[1:3].int())
@@ -96,20 +102,11 @@ highest_layer = -1
 
 plt.figure(num=1, figsize=(20, 20), dpi=80)
 
-# tracking task config
-# top_N_layer = 2
-# top_N_features = 10
 target_rect = [0, 0, 0, 0]
 recom_idx_list = []
 recom_score_list = []
 recom_layers = []
-multiscale_flag = True
 target_feature = None
-# spatiotemporal_buffer_size = 5
-tracker = ORCFTracker(multiscale_flag)
-# cv2.namedWindow('tracking')
-# cv2.namedWindow('target feature')
-inteval = 1
 
 # start loading video
 while cap.isOpened():

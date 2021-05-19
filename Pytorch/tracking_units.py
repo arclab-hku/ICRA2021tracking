@@ -227,28 +227,27 @@ def weighted_avg_and_std(values, weights):
     variance = np.average((values-average)**2, weights=weights)
     return average, math.sqrt(variance)
 
-
 # ORCF tracker
 class ORCFTracker:
-    def __init__(self, multiscale=False):
+    def __init__(self):
         self.lambdar = 0.001  # regularization
         self.padding = 1.5  # extra area surrounding the target
+        self.sigma = 0.5  # gaussian kernel bandwidth, coswindow
         self.output_sigma_factor = 0.125  # bandwidth of gaussian target
-        # self.interp_factor = 0.012  # linear interpolation factor for adaptation
         self.interp_factor = 0.1  # linear interpolation factor for adaptation
-        self.sigma = 0.5  # gaussian kernel bandwidth
+        self.scale_gamma = 0.9
         self.keyFrame = False
-        self.scale2keyframe_x = 1
-        self.scale2keyframe_y = 1
+        self.hann = None  # numpy.ndarray    cos window (size_patch[0], size_patch[1])
+        self.cnnFeature = None  # size = frame size
+        self.size_patch = [0, 0, 0]  # current patch size [int,int,int]
 
         self._x_sz = [0, 0]  # template cv::Size, [width,height]  #[int,int]
         self._roi = [0., 0., 0., 0.]  # cv::Rect2f, [x,y,width,height]  #[float,float,float,float]
-        self.size_patch = [0, 0, 0]  # current patch size [int,int,int]
         self._alphaf = None  # numpy.ndarray    (size_patch[0], size_patch[1], 2)
         self._yf = None  # numpy.ndarray    (size_patch[0], size_patch[1], 2)
         self._x = None  # numpy.ndarray    (size_patch[0], size_patch[1])
-        self.hann = None  # numpy.ndarray    cos window (size_patch[0], size_patch[1])
-        self.cnnFeature = None # size = frame size
+        self._scale2keyframe_x = 1
+        self._scale2keyframe_y = 1
         self._scale_x_buffer = []  # store scale of w
         self._scale_y_buffer = []  # store scale of h
         self._buffer_size = 5
@@ -330,9 +329,9 @@ class ORCFTracker:
         else:
             sumRatio = sum(pixel_list) / self._keyFrame_meanstd[0]
             meanRatio = mean_activation / self._keyFrame_meanstd[1]
-            r = sumRatio * meanRatio
-            scale_step_x = 0.9 * r + 0.1 * sigma_x / self._keyFrame_meanstd[2]
-            scale_step_y = 0.9 * r + 0.1 * sigma_y / self._keyFrame_meanstd[3]
+            r = self.scale_gamma * sumRatio * meanRatio
+            scale_step_x = r + (1 - self.scale_gamma) * sigma_x / self._keyFrame_meanstd[2]
+            scale_step_y = r + (1 - self.scale_gamma) * sigma_y / self._keyFrame_meanstd[3]
             self._scale_x_buffer.append(scale_step_x)
             self._scale_y_buffer.append(scale_step_y)
 
@@ -341,8 +340,8 @@ class ORCFTracker:
             medfilt(self._scale_y_buffer, 3)
             # self.scale2keyframe_x = self._scale_x_buffer[1]
             # self.scale2keyframe_y = self._scale_y_buffer[1]
-            self.scale2keyframe_x = np.mean(self._scale_x_buffer)
-            self.scale2keyframe_y = np.mean(self._scale_y_buffer)
+            self._scale2keyframe_x = np.mean(self._scale_x_buffer)
+            self._scale2keyframe_y = np.mean(self._scale_y_buffer)
             self._scale_x_buffer.pop()
             self._scale_y_buffer.pop()
 
@@ -374,8 +373,8 @@ class ORCFTracker:
 
         loc, peak_value = self.detect(self._x, x)
 
-        cx = cx + loc[0] * self.scale2keyframe_x
-        cy = cy + loc[1] * self.scale2keyframe_y
+        cx = cx + loc[0] * self._scale2keyframe_x
+        cy = cy + loc[1] * self._scale2keyframe_y
         self._roi[0] = cx - self._roi[2] / 2.0
         self._roi[1] = cy - self._roi[3] / 2.0
 
@@ -385,8 +384,8 @@ class ORCFTracker:
         self.scaleUpdate(searchingRegion)
         # print([self.scale2keyframe_x, self.scale2keyframe_y])
 
-        self._roi[2] = self._x_sz[0] * self.scale2keyframe_x
-        self._roi[3] = self._x_sz[1] * self.scale2keyframe_y
+        self._roi[2] = self._x_sz[0] * self._scale2keyframe_x
+        self._roi[3] = self._x_sz[1] * self._scale2keyframe_y
         self._roi[0] = cx - self._roi[2] / 2.0
         self._roi[1] = cy - self._roi[3] / 2.0
 

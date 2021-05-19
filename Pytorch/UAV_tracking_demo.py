@@ -40,7 +40,6 @@ classes = load_classes(task_info.yolo_classes_data)
 videofile = task_info.video_path
 target_class = task_info.tracking_object
 layer_list = task_info.candidate_layer_list
-
 # init yolo
 colors = pkl.load(open("pallete", "rb"))
 start_time = 0
@@ -54,13 +53,17 @@ model.net_info["height"] = int(task_info.yolo_net_resolution)
 inp_dim = int(model.net_info["height"])
 assert inp_dim % 32 == 0 
 assert inp_dim > 32
-
-#If there's a GPU availible, put the model on GPU
-if CUDA:
+if CUDA: #If there's a GPU availible, put the model on GPU
     model.cuda()
-
-#Set the model in evaluation mode
-model.eval()
+model.eval() #Set the model in evaluation mode
+# initial tracker
+tracker = ORCFTracker()
+tracker.padding = task_info.tracker_padding # regularization
+tracker.lambdar = task_info.tracker_lambdar
+tracker.sigma = task_info.tracker_kernel_sigma  # gaussian kernel bandwidth, coswindow
+tracker.output_sigma_factor = task_info.tracker_output_sigma
+tracker.interp_factor = task_info.tracker_interp_factor
+tracker.scale_gamma = task_info.tracker_scale_gamma
 
 def write(x, results):
     c1 = tuple(x[1:3].int())
@@ -92,14 +95,9 @@ def task_manager(yolo_detection, target_class, select_rule = 'first_detected'):
 
 # ====================================================================================
 # Load video data
-
 cap = cv2.VideoCapture(videofile)
-
-# ====================================================================================
-# Live cam
-
 assert cap.isOpened(), 'Cannot capture source'
-
+# init
 frames = 0  
 task_activate = False
 highest_layer = -1
@@ -107,13 +105,9 @@ target_rect = [0, 0, 0, 0]
 recom_idx_list = []
 recom_score_list = []
 recom_layers = []
-multiscale_flag = True
 target_feature = None
-tracker = ORCFTracker(multiscale_flag)
 cv2.namedWindow('tracking')
-# cv2.namedWindow('target feature')
 inteval = 1
-
 # start loading video
 while cap.isOpened():
     ret, frame = cap.read()
@@ -195,7 +189,6 @@ while cap.isOpened():
         c = cv2.waitKey(inteval) & 0xFF
         if c == 27 or c == ord('q'):
             break
-
     else:
         break
 

@@ -227,6 +227,12 @@ class TaskInfo:
         self.video_path = './data/f35.mp4'
         self.tracking_object = 'aeroplane'
         self.candidate_layer_list = range(12, 36)
+        self.tracker_padding = 1.5
+        self.tracker_lambdar = 0.001
+        self.tracker_interp_factor = 0.1
+        self.tracker_kernel_sigma = 0.5
+        self.tracker_output_sigma = 0.125
+        self.tracker_scale_gamma = 0.9
 
     def load_TaskInfo(self, yaml_fname):
         # Parse
@@ -244,3 +250,9 @@ class TaskInfo:
         self.video_path = yaml_info["video_path"]
         self.tracking_object = yaml_info["tracking_object"]
         self.candidate_layer_list = yaml_info["candidate_layer_list"]
+        self.tracker_padding = yaml_info["tracker_padding"]
+        self.tracker_lambdar = yaml_info["tracker_lambdar"]
+        self.tracker_interp_factor = yaml_info["tracker_interp_factor"]
+        self.tracker_kernel_sigma = yaml_info["tracker_kernel_sigma"]
+        self.tracker_output_sigma = yaml_info["tracker_output_sigma"]
+        self.tracker_scale_gamma = yaml_info["tracker_scale_gamma"]
