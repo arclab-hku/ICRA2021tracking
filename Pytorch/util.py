@@ -131,7 +131,7 @@ def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
 #        
   
         #Get the various classes detected in the image
-        img_classes = unique(image_pred_[:,-1])  # -1 index holds the class index
+        img_classes = unique(image_pred_[:, -1])  # -1 index holds the class index
         
         
         for cls in img_classes:
@@ -139,13 +139,13 @@ def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
 
         
             #get the detections with one particular class
-            cls_mask = image_pred_*(image_pred_[:,-1] == cls).float().unsqueeze(1)
-            class_mask_ind = torch.nonzero(cls_mask[:,-2], as_tuple=False).squeeze()
-            image_pred_class = image_pred_[class_mask_ind].view(-1,7)
+            cls_mask = image_pred_*(image_pred_[:, -1] == cls).float().unsqueeze(1)
+            class_mask_ind = torch.nonzero(cls_mask[:, -2], as_tuple=False).squeeze()
+            image_pred_class = image_pred_[class_mask_ind].view(-1, 7)
             
             #sort the detections such that the entry with the maximum objectness
             #confidence is at the top
-            conf_sort_index = torch.sort(image_pred_class[:,4], descending = True )[1]
+            conf_sort_index = torch.sort(image_pred_class[:, 4], descending=True)[1]
             image_pred_class = image_pred_class[conf_sort_index]
             idx = image_pred_class.size(0)   #Number of detections
             
@@ -165,18 +165,18 @@ def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
                 image_pred_class[i+1:] *= iou_mask       
             
                 #Remove the non-zero entries
-                non_zero_ind = torch.nonzero(image_pred_class[:,4], as_tuple=False).squeeze()
-                image_pred_class = image_pred_class[non_zero_ind].view(-1,7)
+                non_zero_ind = torch.nonzero(image_pred_class[:, 4], as_tuple=False).squeeze()
+                image_pred_class = image_pred_class[non_zero_ind].view(-1, 7)
                 
             batch_ind = image_pred_class.new(image_pred_class.size(0), 1).fill_(ind)      #Repeat the batch_id for as many detections of the class cls in the image
             seq = batch_ind, image_pred_class
             
             if not write:
-                output = torch.cat(seq,1)
+                output = torch.cat(seq, 1)
                 write = True
             else:
-                out = torch.cat(seq,1)
-                output = torch.cat((output,out))
+                out = torch.cat(seq, 1)
+                output = torch.cat((output, out))
 
     try:
         return output
@@ -187,8 +187,8 @@ def letterbox_image(img, inp_dim):
     '''resize image with unchanged aspect ratio using padding'''
     img_w, img_h = img.shape[1], img.shape[0]
     w, h = inp_dim
-    new_w = int(img_w * min(w/img_w, h/img_h))
-    new_h = int(img_h * min(w/img_w, h/img_h))
+    new_w = round(img_w * min(w/img_w, h/img_h))
+    new_h = round(img_h * min(w/img_w, h/img_h))
     resized_image = cv2.resize(img, (new_w,new_h), interpolation = cv2.INTER_CUBIC)
     
     canvas = np.full((inp_dim[1], inp_dim[0], 3), 128)
@@ -220,7 +220,7 @@ class TaskInfo:
         self.yolo_weight_path = './weight/yolov3.weights'
         self.yolo_net_resolution = 416
         self.yolo_batch_size = 1
-        self.yolo_confidence = 0.5
+        self.yolo_confidence = 0.9
         self.yolo_nms_thresh = 0.4
         self.yolo_num_classes = 80
         self.yolo_classes_data = './classes/coco.names'
@@ -229,12 +229,12 @@ class TaskInfo:
         self.candidate_layer_range = range(12, 36)
         self.tracker_activate_thresh = 5
         self.tracker_padding = 1.5
-        self.tracker_lambdar = 0.001
-        self.tracker_interp_factor = 0.1
+        self.tracker_lambdar = 0.0001
+        self.tracker_interp_factor = 0.05
         self.tracker_kernel_sigma = 0.5
-        self.tracker_output_sigma = 0.125
+        self.tracker_output_sigma = 0.05
         self.tracker_scale_gamma = 0.9
-        self.tracker_downsample = 2
+        self.feature_channel = 1
 
     def load_TaskInfo(self, yaml_fname):
         # Parse
@@ -252,7 +252,10 @@ class TaskInfo:
         self.video_path = yaml_info["video_path"]
         self.tracking_object = yaml_info["tracking_object"]
         r = yaml_info["candidate_layer_range"]
-        self.candidate_layer_range = range(r[0], r[1])
+        if len(r) == 2:
+            self.candidate_layer_range = range(r[0], r[1])
+        else:
+            self.candidate_layer_range = r
         self.tracker_activate_thresh = yaml_info["tracker_activate_thresh"]
         self.tracker_padding = yaml_info["tracker_padding"]
         self.tracker_lambdar = yaml_info["tracker_lambdar"]
@@ -260,4 +263,3 @@ class TaskInfo:
         self.tracker_kernel_sigma = yaml_info["tracker_kernel_sigma"]
         self.tracker_output_sigma = yaml_info["tracker_output_sigma"]
         self.tracker_scale_gamma = yaml_info["tracker_scale_gamma"]
-        self.tracker_downsample = yaml_info["tracker_scale_gamma"]

@@ -40,6 +40,8 @@ classes = load_classes(task_info.yolo_classes_data)
 videofile = task_info.video_path
 target_class = task_info.tracking_object
 layer_list = task_info.candidate_layer_range
+Top_N_layer = 8
+Top_N_feature = 10
 # init yolo
 colors = pkl.load(open("pallete", "rb"))
 start_time = 0
@@ -111,16 +113,17 @@ def draw_boundingbox(event, x, y, flags, param):
             ix, iy = x - w / 2, y - h / 2
             initTracking = True
 
-def task_manager(yolo_detection, target_class, select_rule = 'first_detected'):
+def task_manager(yolo_detection, target_name, select_rule = 'first_detected'):
     rect = [0, 0, 0, 0]
     task_activate = False
     global detect_counter
     global lost_counter
+    global tracker_activate_thresh
     for x in yolo_detection:
         cls = int(x[-1])
         label = "{0}".format(classes[cls])
         if select_rule == 'first_detected':
-            if label == target_class:
+            if label == target_name:
                 detect_counter += 1
                 lost_counter = 0
                 if detect_counter == tracker_activate_thresh:
@@ -187,21 +190,19 @@ while cap.isOpened():
                 target_rect = [ix, iy, cx, cy]
                 recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data,
                                                                                                   layer_list, frame,
-                                                                                                  target_rect, 10, 10)
+                                                                                                  target_rect,
+                                                                                                  Top_N_feature,
+                                                                                                  Top_N_layer)
                 # rebuild target model from recommendated features
-                recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
+                weightedFeatures = getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_list,
                                                               recom_layers)
-                recom_heatmap = 0
-                for heatmap in recom_heatmap_list:
-                    recom_heatmap = recom_heatmap + cv2.resize(heatmap, (52, 52))
-                    # recom_heatmap += heatmap
-                recom_heatmap = image_norm(recom_heatmap)
+
                 highest_layer = layer_list[max(recom_layers)]
                 # initial tracker
                 roi = target_rect.copy()
                 roi[2] = roi[2] - roi[0]
                 roi[3] = roi[3] - roi[1]
-                tracker.init(roi, frame.copy(), recom_heatmap)
+                tracker.init(roi, frame.copy(), weightedFeatures)
                 cv2.rectangle(frame, (target_rect[0], target_rect[1]), (target_rect[2], target_rect[3]), (0, 255, 0), 1)
             else:
                 # find tracking object by YOLO detection
@@ -228,35 +229,27 @@ while cap.isOpened():
                             recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data,
                                                                                                               layer_list, frame,
                                                                                                               target_rect,
-                                                                                                              10, 5)
+                                                                                                              Top_N_feature,
+                                                                                                              Top_N_layer)
                         # rebuild target model from recommendated features
-                        recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
+                        weightedFeatures = getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_list,
                                                                 recom_layers)
-                        recom_heatmap = 0
-                        for heatmap in recom_heatmap_list:
-                            recom_heatmap = recom_heatmap + cv2.resize(heatmap, (52, 52))
-                            # recom_heatmap += heatmap
-                        recom_heatmap = image_norm(recom_heatmap)
+
                         highest_layer = layer_list[max(recom_layers)]
                         # initial tracker
                         roi = target_rect.copy()
                         roi[2] = roi[2] - roi[0]
                         roi[3] = roi[3] - roi[1]
-                        tracker.init(roi, frame.copy(), recom_heatmap)
+                        tracker.init(roi, frame.copy(), weightedFeatures)
                         cv2.rectangle(frame, (target_rect[0], target_rect[1]), (target_rect[2], target_rect[3]), (0, 255, 0), 1)
                     else:
                         list(map(lambda x: write(x, frame), output))
         else:
 
-            recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
+            weightedFeatures = getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_list,
                                                     recom_layers)
-            recom_heatmap = 0
-            for heatmap in recom_heatmap_list:
-                # recom_heatmap = recom_heatmap + cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
-                recom_heatmap += heatmap
-            recom_heatmap = image_norm(recom_heatmap)
 
-            boundingbox, target_feature = tracker.update(frame.copy(), recom_heatmap)
+            boundingbox, target_feature = tracker.update(frame.copy(), weightedFeatures)
             boundingbox = list(map(int, boundingbox))
             x1 = boundingbox[0]
             y1 = boundingbox[1]
@@ -264,7 +257,7 @@ while cap.isOpened():
             y2 = boundingbox[1] + boundingbox[3]
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-            if tracker.confidence < 0.3:
+            if tracker.confidence < 0.5:
                 task_activate = False
                 highest_layer = -1
                 selectingObject = False
@@ -283,7 +276,7 @@ while cap.isOpened():
 
         FPS = int(1 / (time.time() - start_time))
         frames += 1
-        cv2.putText(frame, 'FPS: ' + str(FPS), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+        cv2.putText(frame, 'FPS: ' + str(FPS) + ' C:' + str(tracker.confidence), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 255, 0), 2)
         cv2.imshow('tracking', frame)
         c = cv2.waitKey(inteval) & 0xFF

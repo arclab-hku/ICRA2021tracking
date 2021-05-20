@@ -49,7 +49,7 @@ def getDistictiveScore(heatmap, rect):
 
     return score
 
-def feature_recommender(layers_data, layer_list, img, rect, top_N_feature = 10, top_N_layer = 2):
+def feature_recommender(layers_data, layer_list, img, rect, top_N_feature = 10, top_N_layer = 1):
     recom_score_list = []
     recom_idx_list = []
     layer_score = []
@@ -59,7 +59,7 @@ def feature_recommender(layers_data, layer_list, img, rect, top_N_feature = 10, 
         scores = []
         scale_x = fmaps.shape[3] / img_size[1]
         scale_y = fmaps.shape[2] / img_size[0]
-        scaled_rect = [int(scale_x * rect[0]), int(scale_y * rect[1]), int(scale_x * rect[2]), int(scale_y * rect[3])]
+        scaled_rect = [round(scale_x * rect[0]), round(scale_y * rect[1]), round(scale_x * rect[2]), round(scale_y * rect[3])]
         for fmap in fmaps[0, :, :, :]:
             heatmap = fmap.data.cpu().numpy()
             heatmap = image_norm(heatmap)
@@ -81,31 +81,33 @@ def feature_recommender(layers_data, layer_list, img, rect, top_N_feature = 10, 
 
     return recom_idx_list, recom_score_list, layer_score, recom_layers
 
-def reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list, recom_layers):
-    heatmap_list = []
+def getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_list, recom_layers, map_size = 52):
+    weightedFeatures = 0
     if recom_idx_list == 0 or recom_score_list == 0:
         for idx in recom_layers:
             fmaps = layers_data[layer_list[idx]].clone().detach()
             heatmap = 0
             for fmap in fmaps[0, :, :, :]:
-                heatmap = heatmap + fmap
+                heatmap += fmap
 
             heatmap = heatmap.data.cpu().numpy()
-            heatmap_list.append(heatmap)
+            weightedFeatures += cv2.resize(heatmap, (map_size, map_size))
     else:
         for idx in recom_layers:
             fmaps = layers_data[layer_list[idx]].clone().detach()
             recom_idx = recom_idx_list[idx]
-            scores = recom_score_list[idx]
-            weights = scores_norm(scores)
+            weights = recom_score_list[idx]
+            # weights = scores_norm(scores)
             heatmap = 0
             for fidx, weight in zip(recom_idx, weights):
                 fmap = fmaps[0, fidx, :, :]
-                heatmap = heatmap + weight * fmap.data.cpu().numpy()
+                heatmap += weight * fmap.data.cpu().numpy()
 
-            heatmap_list.append(heatmap)
+            weightedFeatures += sum(weights) * cv2.resize(heatmap, (map_size, map_size))
 
-    return heatmap_list
+    weightedFeatures = image_norm(weightedFeatures)
+
+    return weightedFeatures
 
 # ======================================================================================================================
 # correlation filter utils
@@ -143,30 +145,30 @@ def complexDivision(a, b):
     return res
 
 
-def rearrange(img):
-    # return np.fft.fftshift(img, axes=(0,1))
-    assert (img.ndim == 2)
-    img_ = img.copy()
-    # img_ = np.zeros(img.shape, img.dtype)
-    xh1 = xh2 = yh1 = yh2 = 0
-    if img.shape[1] % 2 == 0:
-        xh1 = xh2 = img.shape[1] / 2
-    else:
-        xh1 = int(img.shape[1] / 2)
-        xh2 = xh1 + 1
-
-    if img.shape[0] % 2 == 0:
-        yh1 = yh2 = img.shape[0] / 2
-    else:
-        yh1 = int(img.shape[0] / 2)
-        yh2 = yh1 + 1
-
-    img_[0:yh1, 0:xh1] = img[yh2:img.shape[0], xh2:img.shape[1]]
-    img_[yh2:img.shape[0], xh2:img.shape[1]] = img[0:yh1, 0:xh1]
-    img_[0:yh1, xh2:img.shape[1]] = img[yh2:img.shape[0], 0:xh1]
-    img_[yh2:img.shape[0], 0:xh1] = img[0:yh1, xh2:img.shape[1]]
-
-    return img_
+# def rearrange(img):
+#     # return np.fft.fftshift(img, axes=(0,1))
+#     assert (img.ndim == 2)
+#     img_ = img.copy()
+#     # img_ = np.zeros(img.shape, img.dtype)
+#     xh1 = xh2 = yh1 = yh2 = 0
+#     if img.shape[1] % 2 == 0:
+#         xh1 = xh2 = int(img.shape[1] / 2)
+#     else:
+#         xh1 = int(img.shape[1] / 2)
+#         xh2 = xh1 + 1
+#
+#     if img.shape[0] % 2 == 0:
+#         yh1 = yh2 = int(img.shape[0] / 2)
+#     else:
+#         yh1 = int(img.shape[0] / 2)
+#         yh2 = yh1 + 1
+#
+#     img_[0:yh1, 0:xh1] = img[yh2:img.shape[0], xh2:img.shape[1]]
+#     img_[yh2:img.shape[0], xh2:img.shape[1]] = img[0:yh1, 0:xh1]
+#     img_[0:yh1, xh2:img.shape[1]] = img[yh2:img.shape[0], 0:xh1]
+#     img_[yh2:img.shape[0], 0:xh1] = img[0:yh1, xh2:img.shape[1]]
+#
+#     return img_
 
 # recttools
 def x2(rect):
@@ -230,24 +232,24 @@ def weighted_avg_and_std(values, weights):
 # ORCF tracker
 class ORCFTracker:
     def __init__(self):
-        self.lambdar = 0.001  # regularization
+        self.lambdar = 0.0001  # regularization
         self.padding = 1.5  # extra area surrounding the target
-        self.sigma = 0.5  # gaussian kernel bandwidth, coswindow
-        self.output_sigma_factor = 0.125  # bandwidth of gaussian target
-        self.interp_factor = 0.1  # linear interpolation factor for adaptation
+        self.sigma = 0.4  # gaussian kernel bandwidth, coswindow
+        self.output_sigma_factor = 0.05  # bandwidth of gaussian target
+        self.interp_factor = 0.05  # linear interpolation factor for adaptation
         self.scale_gamma = 0.9
         self.keyFrame = False
         self.hann = None  # numpy.ndarray    cos window (size_patch[0], size_patch[1])
         self.cnnFeature = None  # size = frame size
         self.size_patch = [0, 0, 0]  # current patch size [int,int,int]
         self.confidence = 1
-        self.hist_base = None
+        self.feature_channel = 1
 
         self._scale2img_x = 1.0
         self._scale2img_y = 1.0
         self._x_sz = [0, 0]  # template cv::Size, [width,height]  #[int,int]
         self._roi = [0., 0., 0., 0.]  # cv::Rect2f, [x,y,width,height]  #[float,float,float,float]
-        self._alphaf = None  # numpy.ndarray    (size_patch[0], size_patch[1], 2)
+        self._alphaf = []  # list of numpy.ndarray    (size_patch[0], size_patch[1], 2)
         self._yf = None  # numpy.ndarray    (size_patch[0], size_patch[1], 2)
         self._x = None  # numpy.ndarray    (size_patch[0], size_patch[1])
         self._scale2keyframe_x = 1
@@ -257,9 +259,6 @@ class ORCFTracker:
         self._buffer_size = 5
         self._keyFrame_buffer = []
         self._keyFrame_meanstd = [0., 0., 0.]  # store [mean, std x, std y] of feature activation
-        self._histSize = [50, 60]
-        self._ranges = [0, 180] + [0, 256]
-        self._channels = [0, 1]
 
     def subPixelPeak(self, left, center, right):
         divisor = 2 * center - right - left  # float
@@ -281,44 +280,28 @@ class ORCFTracker:
         res = np.exp(mult * (y + x))
         return fftd(res)
 
-    def getTargetModel(self):
-        extracted_roi = [0, 0, 0, 0]  # [int,int,int,int]
-        cx = self._roi[0] + self._roi[2] / 2  # float
-        cy = self._roi[1] + self._roi[3] / 2  # float
-
-        padded_w = self._roi[2] * self.padding
-        padded_h = self._roi[3] * self.padding
-
-        extracted_roi[2] = int(padded_w)
-        extracted_roi[3] = int(padded_h)
-        extracted_roi[0] = int(cx - extracted_roi[2] / 2)
-        extracted_roi[1] = int(cy - extracted_roi[3] / 2)
-
-        searchingRegion = subwindow(self.cnnFeature, extracted_roi, cv2.BORDER_REPLICATE)
-        FeaturesMap = searchingRegion.astype(np.float32) / 255.0 - 0.5
-        self.size_patch = [FeaturesMap.shape[0], FeaturesMap.shape[1], 1]
-        self.createHanningMats()  # create cos window need size_patch
-
-        target_model_x = self.hann * FeaturesMap
-
-        return target_model_x, searchingRegion
-
-    def detect(self, z, x):
-        kzf = cv2.mulSpectrums(fftd(x), fftd(z), 0, conjB=True)
-        res = real(fftd(complexMultiplication(self._alphaf, kzf), True))
-
-        _, pv, _, pi = cv2.minMaxLoc(res)  # pv:float  pi:tuple of int
-        p = [float(pi[0]), float(pi[1])]  # cv::Point2f, [x,y]  #[float,float]
-
-        if (pi[0] > 0 and pi[0] < res.shape[1] - 1):
-            p[0] += self.subPixelPeak(res[pi[1], pi[0] - 1], pv, res[pi[1], pi[0] + 1])
-        if (pi[1] > 0 and pi[1] < res.shape[0] - 1):
-            p[1] += self.subPixelPeak(res[pi[1] - 1, pi[0]], pv, res[pi[1] + 1, pi[0]])
-
-        p[0] -= res.shape[1] / 2.
-        p[1] -= res.shape[0] / 2.
-
-        return p, pv
+    # def gaussianCorrelation(self, x1, x2, enable_guassian = True):
+    #     kzf = cv2.mulSpectrums(fftd(x1), fftd(x2), 0, conjB=True)  # 'conjB=' is necessary!
+    #     if enable_guassian:
+    #         c = fftd(kzf, True)
+    #         c = real(c)
+    #         c = rearrange(c)
+    #         if (x1.ndim == 3 and x2.ndim == 3):
+    #             d = (np.sum(x1[:, :, 0] * x1[:, :, 0]) + np.sum(x2[:, :, 0] * x2[:, :, 0]) - 2.0 * c) / (
+    #                         self.size_patch[0] * self.size_patch[1] * self.size_patch[2])
+    #             d = d * (d >= 0)
+    #             d = np.exp(-d / (self.sigma * self.sigma))
+    #         elif (x1.ndim == 2 and x2.ndim == 2):
+    #             d = (np.sum(x1 * x1) + np.sum(x2 * x2) - 2.0 * c) / (
+    #                         self.size_patch[0] * self.size_patch[1] * self.size_patch[2])
+    #         else:
+    #             print('input patch dimension error')
+    #         d = d * (d >= 0)
+    #         d = np.exp(-d / (self.sigma * self.sigma))
+    #     else:
+    #         d = kzf
+    #
+    #     return d
 
     def scaleUpdate(self, target_region):
         mean_activation = np.mean(target_region)
@@ -345,18 +328,47 @@ class ORCFTracker:
         if len(self._scale_x_buffer) == self._buffer_size:
             medfilt(self._scale_x_buffer, 3)
             medfilt(self._scale_y_buffer, 3)
-            # self.scale2keyframe_x = self._scale_x_buffer[1]
-            # self.scale2keyframe_y = self._scale_y_buffer[1]
             self._scale2keyframe_x = np.mean(self._scale_x_buffer)
             self._scale2keyframe_y = np.mean(self._scale_y_buffer)
             self._scale_x_buffer.pop()
             self._scale_y_buffer.pop()
 
+    def getTargetModel(self, image):
+        extracted_roi = [0, 0, 0, 0]  # [int,int,int,int]
+        cx = self._roi[0] + self._roi[2] / 2  # float
+        cy = self._roi[1] + self._roi[3] / 2  # float
+
+        padded_w = self._roi[2] * self.padding
+        padded_h = self._roi[3] * self.padding
+
+        extracted_roi[2] = round(padded_w)
+        extracted_roi[3] = round(padded_h)
+        extracted_roi[0] = round(cx - extracted_roi[2] / 2)
+        extracted_roi[1] = round(cy - extracted_roi[3] / 2)
+
+        cnnFeature_roi = subwindow(self.cnnFeature, extracted_roi, cv2.BORDER_REPLICATE)
+        FeaturesMap = cnnFeature_roi.astype(np.float32) / 255.0 - 0.5
+
+        image_resize = cv2.resize(image, (self.cnnFeature.shape[1], self.cnnFeature.shape[0]))
+        rgb_roi = subwindow(image_resize, extracted_roi, cv2.BORDER_REPLICATE)
+        hsv_Map = cv2.cvtColor(rgb_roi, cv2.COLOR_BGR2HSV)
+
+        self.size_patch = [FeaturesMap.shape[0], FeaturesMap.shape[1], self.feature_channel]
+        self.createHanningMats()  # create cos window need size_patch
+
+        if self.feature_channel > 1:
+            target_model_x = np.zeros((FeaturesMap.shape[0], FeaturesMap.shape[1], self.feature_channel),
+                                      dtype=np.float32)
+            for c in range(self.feature_channel):
+                target_model_x[:, :, c] = self.hann * FeaturesMap[:, :, c]
+        else:
+            target_model_x = self.hann * FeaturesMap
+
+        return target_model_x, cnnFeature_roi
+
     def init(self, roi, image, cnnFeature):
-        original_target = subwindow(image, roi, cv2.BORDER_REPLICATE)
-        hsv_base = cv2.cvtColor(original_target, cv2.COLOR_BGR2HSV)
-        self.hist_base = cv2.calcHist([hsv_base], self._channels, None, self._histSize, self._ranges, accumulate=False)
-        cv2.normalize(self.hist_base, self.hist_base, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+        if cnnFeature.ndim == 3:
+            self.feature_channel = cnnFeature.shape[2]
         self._roi = list(map(float, roi))
         self.cnnFeature = cnnFeature
         self._scale2img_x = image.shape[1] / cnnFeature.shape[1]
@@ -365,18 +377,53 @@ class ORCFTracker:
         self._roi[1] = self._roi[1] / self._scale2img_y
         self._roi[2] = self._roi[2] / self._scale2img_x
         self._roi[3] = self._roi[3] / self._scale2img_y
-        self._x, searchingRegion = self.getTargetModel()
+        self._alphaf = []
+        self._scale_x_buffer = []  # store scale of w
+        self._scale_y_buffer = []  # store scale of h
+        self._keyFrame_buffer = []
+        self._x, searchingRegion = self.getTargetModel(image)
         self._yf = self.createGaussianPeak(self.size_patch[0], self.size_patch[1])
-        xf = fftd(self._x)
-        kf = cv2.mulSpectrums(xf, xf, 0, conjB=True)  # 'conjB=' is necessary!
-        self._alphaf = complexDivision(self._yf, kf + self.lambdar)
+        if self.feature_channel > 1:
+            for c in range(self.feature_channel):
+                xf = fftd(self._x[:, :, c])
+                kf = cv2.mulSpectrums(xf, xf, 0, conjB=True)  # 'conjB=' is necessary!
+                self._alphaf.append(complexDivision(self._yf, kf + self.lambdar))
+        else:
+            xf = fftd(self._x)
+            kf = cv2.mulSpectrums(xf, xf, 0, conjB=True)  # 'conjB=' is necessary!
+            self._alphaf.append(complexDivision(self._yf, kf + self.lambdar))
 
         self.keyFrame = True
-        target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
-        target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
-        self.scaleUpdate(target_feature)
-        # self.scaleUpdate(searchingRegion)
+        # target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
+        # target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
+        # self.scaleUpdate(target_feature)
+        self.scaleUpdate(searchingRegion)
         self._x_sz = [self._roi[2], self._roi[3]]
+
+    def detect(self, x):
+        res = 0
+        if self.feature_channel > 1:
+            for c in range(self.feature_channel):
+                kzf_cnn = cv2.mulSpectrums(fftd(x[:, :, c]), fftd(self._x[:, :, c]), 0, conjB=True)
+                res = res + real(fftd(complexMultiplication(self._alphaf[c], kzf_cnn), True))
+        else:
+            kzf_cnn = cv2.mulSpectrums(fftd(x), fftd(self._x), 0, conjB=True)
+            res = real(fftd(complexMultiplication(self._alphaf[0], kzf_cnn), True))
+
+        _, pv, _, pi = cv2.minMaxLoc(res)  # pv:float  pi:tuple of int
+        p = [float(pi[0]), float(pi[1])]  # cv::Point2f, [x,y]  #[float,float]
+
+        self.confidence = pv
+
+        if (pi[0] > 0 and pi[0] < res.shape[1] - 1):
+            p[0] += self.subPixelPeak(res[pi[1], pi[0] - 1], pv, res[pi[1], pi[0] + 1])
+        if (pi[1] > 0 and pi[1] < res.shape[0] - 1):
+            p[1] += self.subPixelPeak(res[pi[1] - 1, pi[0]], pv, res[pi[1] + 1, pi[0]])
+
+        p[0] -= res.shape[1] / 2.
+        p[1] -= res.shape[0] / 2.
+
+        return p, pv
 
     def update(self, image, cnnFeature):
         self.cnnFeature = cnnFeature
@@ -384,21 +431,20 @@ class ORCFTracker:
         cx = self._roi[0] + self._roi[2] / 2.
         cy = self._roi[1] + self._roi[3] / 2.
 
-        x, searchingRegion = self.getTargetModel()
+        x, searchingRegion = self.getTargetModel(image)
         x = cv2.resize(x, (self._x.shape[1], self._x.shape[0]))
 
-        loc, peak_value = self.detect(self._x, x)
+        loc, peak_value = self.detect(x)
 
         cx = cx + loc[0] * self._scale2keyframe_x
         cy = cy + loc[1] * self._scale2keyframe_y
         self._roi[0] = cx - self._roi[2] / 2.0
         self._roi[1] = cy - self._roi[3] / 2.0
 
-        target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
-        target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
-        self.scaleUpdate(target_feature)
-        # self.scaleUpdate(searchingRegion)
-        # print([self.scale2keyframe_x, self.scale2keyframe_y])
+        # target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
+        # target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
+        # self.scaleUpdate(target_feature)
+        self.scaleUpdate(searchingRegion)
 
         self._roi[2] = self._x_sz[0] * self._scale2keyframe_x
         self._roi[3] = self._x_sz[1] * self._scale2keyframe_y
@@ -415,23 +461,23 @@ class ORCFTracker:
         if (self._roi[1] + self._roi[3] > cnnFeature.shape[0] - 1):
             self._roi[3] = cnnFeature.shape[0] - 1 - self._roi[1]
 
-        x, searchingRegion = self.getTargetModel()
+        x, searchingRegion = self.getTargetModel(image)
         x = cv2.resize(x, (self._x.shape[1], self._x.shape[0]))
-        self._yf = self.createGaussianPeak(x.shape[0], x.shape[1])
-        xf = fftd(x)
-        kf = cv2.mulSpectrums(xf, xf, 0, conjB=True)  # 'conjB=' is necessary!
-        alphaf = complexDivision(self._yf, kf + self.lambdar)
-        self._x = (1 - self.interp_factor) * self._x + self.interp_factor * x
-        self._alphaf = (1 - self.interp_factor) * self._alphaf + self.interp_factor * alphaf
-        # return tracking result
+        # self._yf = self.createGaussianPeak(x.shape[0], x.shape[1])
+        if self.feature_channel > 1:
+            for c in range(self.feature_channel):
+                xf = fftd(x[:, :, c])
+                kf = cv2.mulSpectrums(xf, xf, 0, conjB=True)  # 'conjB=' is necessary!
+                alphaf = complexDivision(self._yf, kf + self.lambdar)
+                self._x[:, :, c] = (1 - self.interp_factor) * self._x[:, :, c] + self.interp_factor * x[:, :, c]
+                self._alphaf[c] = (1 - self.interp_factor) * self._alphaf[c] + self.interp_factor * alphaf
+        else:
+            xf = fftd(x)
+            kf = cv2.mulSpectrums(xf, xf, 0, conjB=True)  # 'conjB=' is necessary!
+            alphaf = complexDivision(self._yf, kf + self.lambdar)
+            self._x = (1 - self.interp_factor) * self._x + self.interp_factor * x
+            self._alphaf[0] = (1 - self.interp_factor) * self._alphaf[0] + self.interp_factor * alphaf
+        # # return tracking result
         target_roi = [self._roi[0] * self._scale2img_x, self._roi[1] * self._scale2img_y, self._roi[2] * self._scale2img_x, self._roi[3] * self._scale2img_y]
-        extract_roi = list(map(int, target_roi))
-        current_target = subwindow(image, extract_roi, cv2.BORDER_REPLICATE)
-        hsv_test = cv2.cvtColor(current_target, cv2.COLOR_BGR2HSV)
-        hist_test = cv2.calcHist([hsv_test], self._channels, None, self._histSize, self._ranges, accumulate=False)
-        cv2.normalize(hist_test, hist_test, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-        hist_check = cv2.compareHist(self.hist_base, hist_test, 0)
-        # self.confidence = hist_check
-        self.confidence = x.max() + hist_check
 
         return target_roi, searchingRegion

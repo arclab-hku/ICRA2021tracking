@@ -18,27 +18,31 @@ import random
 import matplotlib.pyplot as plt
 # import sys
 
-# load yaml
-task_info = TaskInfo()
-batch_size = int(task_info.yolo_batch_size)
-confidence = float(task_info.yolo_confidence)
-nms_thesh = float(task_info.yolo_nms_thresh)
-num_classes = int(task_info.yolo_num_classes)
-classes = load_classes(task_info.yolo_classes_data)
-videofile = task_info.video_path
-target_class = task_info.tracking_object
-layer_list = task_info.candidate_layer_range
+videofile = './data/f35.mp4'
+target_class = 'aeroplane'
+layer_list = range(12, 36)
+recom_idx_list = []
+recom_score_list = []
+recom_layers = []
+Top_N_layer = 1
+Top_N_feature = 10
+target_feature = None
 
 # init yolo
+batch_size = 1
+yolo_confidence = 0.5 # for yolo detection
+nms_thesh = 0.4 # for yolo detection
+num_classes = 80 # coco
+classes = load_classes('./classes/coco.names')
 colors = pkl.load(open("pallete", "rb"))
 start_time = 0
 CUDA = torch.cuda.is_available()
 # Set up the neural network
 print("Loading network.....")
-model = Darknet(task_info.yolo_cfg_path)
-model.load_weights(task_info.yolo_weight_path)
+model = Darknet('./config/yolov3.cfg')
+model.load_weights('./weight/yolov3.weights')
 print("Network successfully loaded")
-model.net_info["height"] = int(task_info.yolo_net_resolution)
+model.net_info["height"] = int(416)
 inp_dim = int(model.net_info["height"])
 assert inp_dim % 32 == 0
 assert inp_dim > 32
@@ -49,16 +53,18 @@ if CUDA:
 model.eval()
 # tracker initialize
 tracker = ORCFTracker()
-tracker.padding = task_info.tracker_padding # regularization
-tracker.lambdar = task_info.tracker_lambdar
-tracker.sigma = task_info.tracker_kernel_sigma  # gaussian kernel bandwidth, coswindow
-tracker.output_sigma_factor = task_info.tracker_output_sigma
-tracker.interp_factor = task_info.tracker_interp_factor
-tracker.scale_gamma = task_info.tracker_scale_gamma
-tracker_activate_thresh = task_info.tracker_activate_thresh
-detect_counter = 0
+tracker.padding = 1.5 # extend searching region
+tracker.lambdar = 0.001 # regularization
+tracker.sigma = 0.5  # gaussian kernel bandwidth, coswindow
+tracker.output_sigma_factor = 0.05
+tracker.interp_factor = 0.05
+tracker.scale_gamma = 0.9 # for scale learning
 
-def write(x, results):
+detect_counter = 0
+tracker_activate_thresh = 3
+lost_counter = 0
+
+def write(x, results, classes):
     c1 = tuple(x[1:3].int())
     c2 = tuple(x[3:5].int())
     img = results
@@ -72,23 +78,17 @@ def write(x, results):
     cv2.putText(img, label, (c1[0], c1[1] + t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 1, [225, 255, 255], 1)
     return img
 
-def task_manager(yolo_detection, target_class, select_rule = 'first_detected'):
+def task_manager(yolo_detection, target_name, classes):
     rect = [0, 0, 0, 0]
     task_activate = False
-    global detect_counter
     for x in yolo_detection:
         cls = int(x[-1])
         label = "{0}".format(classes[cls])
-        if select_rule == 'first_detected':
-            if label == target_class:
-                detect_counter = detect_counter + 1
-                if detect_counter == tracker_activate_thresh:
-                    rect[0:2] = x[1:3].int().cpu().numpy()
-                    rect[2:4] = x[3:5].int().cpu().numpy()
-                    task_activate = True
-                break
-            else:
-                detect_counter = 0
+        if label == target_name:
+            rect[0:2] = x[1:3].int().cpu().numpy()
+            rect[2:4] = x[3:5].int().cpu().numpy()
+            task_activate = True
+            break
     return rect, task_activate
 
 # ====================================================================================
@@ -106,14 +106,9 @@ assert cap.isOpened(), 'Cannot capture source'
 frames = 0  
 task_activate = False
 highest_layer = -1
+target_rect = [0, 0, 0, 0]
 
 plt.figure(num=1, figsize=(20, 20), dpi=80)
-
-target_rect = [0, 0, 0, 0]
-recom_idx_list = []
-recom_score_list = []
-recom_layers = []
-target_feature = None
 
 # start loading video
 while cap.isOpened():
@@ -134,7 +129,7 @@ while cap.isOpened():
         # YOLO detection
         if not task_activate:
 
-            output = write_results(output, confidence, num_classes, nms_conf = nms_thesh)
+            output = write_results(output, yolo_confidence, num_classes, nms_conf=nms_thesh)
             if torch.is_tensor(output):
                 im_dim = im_dim.repeat(output.size(0), 1)
                 scaling_factor = torch.min(inp_dim/im_dim, 1)[0].view(-1, 1)
@@ -148,66 +143,66 @@ while cap.isOpened():
                     output[i, [1, 3]] = torch.clamp(output[i, [1, 3]], 0.0, im_dim[i, 0])
                     output[i, [2, 4]] = torch.clamp(output[i, [2, 4]], 0.0, im_dim[i, 1])
 
-
-                target_rect, task_activate = task_manager(output, target_class)
+                target_rect, task_activate = task_manager(output, target_class, classes)
 
                 # if target is detected
                 if task_activate:
                     # get recommendation score of candidate layers and feature maps
                     recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data,
                                                                                                       layer_list, frame,
-                                                                                                      target_rect)
+                                                                                                      target_rect,
+                                                                                                      Top_N_feature,
+                                                                                                      Top_N_layer)
                     # rebuild target model from recommendated features
-                    recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
+                    weightedFeatures = getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_list,
                                                             recom_layers)
-                    recom_heatmap = 0
-                    for heatmap in recom_heatmap_list:
-                        recom_heatmap = recom_heatmap + cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
-                    recom_heatmap = image_norm(recom_heatmap)
+
                     highest_layer = layer_list[max(recom_layers)]
                     # initial tracker
                     roi = target_rect.copy()
                     roi[2] = roi[2] - roi[0]
                     roi[3] = roi[3] - roi[1]
-                    tracker.init(roi, frame.copy(), recom_heatmap)
+                    tracker.init(roi, frame.copy(), weightedFeatures)
                     cv2.rectangle(frame, (target_rect[0], target_rect[1]), (target_rect[2], target_rect[3]), (0, 255, 0), 1)
+                else:
+                    list(map(lambda x: write(x, frame, classes), output))
+                    cv2.imshow('tracking', frame)
+                    c = cv2.waitKey(1) & 0xFF
+                    if c == 27 or c == ord('q'):
+                        break
         else:
-            recom_heatmap_list = reconstruct_target_model(layers_data, layer_list, recom_idx_list, recom_score_list,
+            weightedFeatures = getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_list,
                                                     recom_layers)
-            recom_heatmap = 0
-            for heatmap in recom_heatmap_list:
-                recom_heatmap = recom_heatmap + cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
-            recom_heatmap = image_norm(recom_heatmap)
 
-            boundingbox, target_feature = tracker.update(frame.copy(), recom_heatmap)
+            boundingbox, target_feature = tracker.update(frame.copy(), weightedFeatures)
             boundingbox = list(map(int, boundingbox))
             x1 = boundingbox[0]
             y1 = boundingbox[1]
             x2 = boundingbox[0] + boundingbox[2]
             y2 = boundingbox[1] + boundingbox[3]
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
             FPS = int(1 / (time.time() - start))
 
+            # for comparison plot
+            recom_heatmap = cv2.resize(weightedFeatures, (frame.shape[1], frame.shape[0]))
             # get overall activation of recommended layer
-            heatmap_overall = reconstruct_target_model(layers_data, layer_list, 0, 0, recom_layers)
-            heatmap = heatmap_overall[-1]
-            heatmap = cv2.resize(heatmap, (frame.shape[1], frame.shape[0]))
-
+            heatmap_overall = getWeightedFeatures(layers_data, layer_list, 0, 0, recom_layers)
+            heatmap = cv2.resize(heatmap_overall, (frame.shape[1], frame.shape[0]))
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             plt.clf()
             plt.subplot(2, 2, 1)
-            plt.title(f'overall activation of layer {layer_list[recom_layers[-1]]}')
+            plt.title(f'yolo v3 (99 layers in total) overall activation of layer {highest_layer}')
             plt.imshow(heatmap, cmap='jet')
             plt.subplot(2, 2, 2)
-            plt.title(f'recommended features of layer {layer_list[recom_layers[-1]]}')
+            plt.title(f'highest recommended layer {highest_layer} by proposed method')
             plt.imshow(recom_heatmap, cmap='jet')
             plt.subplot(2, 2, 3)
             plt.title('correlation filter searching region')
             plt.imshow(target_feature, cmap='jet')
             plt.subplot(2, 2, 4)
-            plt.title(f'tracking result, FPS = {FPS}')
+            plt.title(f'tracking result: FPS = {FPS}, confidence = {tracker.confidence}')
             plt.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            plt.pause(0.001)
+            plt.pause(0.0001)
 
             save_name = './results/frame_' + str(frames) + '.jpg'
             plt.savefig(save_name)
