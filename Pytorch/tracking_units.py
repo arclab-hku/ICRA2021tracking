@@ -208,14 +208,15 @@ def getBorder(original, limited):
 
 
 def subwindow(img, window, borderType=cv2.BORDER_CONSTANT):
+    res = 0
     cutWindow = [x for x in window]
     limit(cutWindow, [0, 0, img.shape[1], img.shape[0]])  # modify cutWindow
-    assert (cutWindow[2] > 0 and cutWindow[3] > 0)
     border = getBorder(window, cutWindow)
     res = img[cutWindow[1]:cutWindow[1] + cutWindow[3], cutWindow[0]:cutWindow[0] + cutWindow[2]]
 
     if (border != [0, 0, 0, 0]):
         res = cv2.copyMakeBorder(res, border[1], border[3], border[0], border[2], borderType)
+
     return res
 
 def weighted_avg_and_std(values, weights):
@@ -346,12 +347,16 @@ class ORCFTracker:
         extracted_roi[0] = round(cx - extracted_roi[2] / 2)
         extracted_roi[1] = round(cy - extracted_roi[3] / 2)
 
+        if extracted_roi[2] < 3 or extracted_roi[3] < 3:
+            self.confidence = 0
+            return self.cnnFeature, self.cnnFeature
+
         cnnFeature_roi = subwindow(self.cnnFeature, extracted_roi, cv2.BORDER_REPLICATE)
         FeaturesMap = cnnFeature_roi.astype(np.float32) / 255.0 - 0.5
 
-        image_resize = cv2.resize(image, (self.cnnFeature.shape[1], self.cnnFeature.shape[0]))
-        rgb_roi = subwindow(image_resize, extracted_roi, cv2.BORDER_REPLICATE)
-        hsv_Map = cv2.cvtColor(rgb_roi, cv2.COLOR_BGR2HSV)
+        # image_resize = cv2.resize(image, (self.cnnFeature.shape[1], self.cnnFeature.shape[0]))
+        # rgb_roi = subwindow(image_resize, extracted_roi, cv2.BORDER_REPLICATE)
+        # hsv_Map = cv2.cvtColor(rgb_roi, cv2.COLOR_BGR2HSV)
 
         self.size_patch = [FeaturesMap.shape[0], FeaturesMap.shape[1], self.feature_channel]
         self.createHanningMats()  # create cos window need size_patch
@@ -369,6 +374,7 @@ class ORCFTracker:
     def init(self, roi, image, cnnFeature):
         if cnnFeature.ndim == 3:
             self.feature_channel = cnnFeature.shape[2]
+        self.confidence = 1
         self._roi = list(map(float, roi))
         self.cnnFeature = cnnFeature
         self._scale2img_x = image.shape[1] / cnnFeature.shape[1]
@@ -394,9 +400,6 @@ class ORCFTracker:
             self._alphaf.append(complexDivision(self._yf, kf + self.lambdar))
 
         self.keyFrame = True
-        # target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
-        # target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
-        # self.scaleUpdate(target_feature)
         self.scaleUpdate(searchingRegion)
         self._x_sz = [self._roi[2], self._roi[3]]
 
@@ -432,6 +435,9 @@ class ORCFTracker:
         cy = self._roi[1] + self._roi[3] / 2.
 
         x, searchingRegion = self.getTargetModel(image)
+        if self.confidence == 0:
+            return self._roi, cnnFeature
+
         x = cv2.resize(x, (self._x.shape[1], self._x.shape[0]))
 
         loc, peak_value = self.detect(x)
@@ -441,9 +447,6 @@ class ORCFTracker:
         self._roi[0] = cx - self._roi[2] / 2.0
         self._roi[1] = cy - self._roi[3] / 2.0
 
-        # target_region = [int(self._roi[0]), int(self._roi[1]), int(self._roi[2]), int(self._roi[3])]
-        # target_feature = subwindow(self.cnnFeature, target_region, cv2.BORDER_REPLICATE)
-        # self.scaleUpdate(target_feature)
         self.scaleUpdate(searchingRegion)
 
         self._roi[2] = self._x_sz[0] * self._scale2keyframe_x
