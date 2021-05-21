@@ -40,8 +40,8 @@ classes = load_classes(task_info.yolo_classes_data)
 videofile = task_info.video_path
 target_class = task_info.tracking_object
 layer_list = task_info.candidate_layer_range
-Top_N_layer = 8
-Top_N_feature = 10
+Top_N_layer = 5
+Top_N_feature = 15
 # init yolo
 colors = pkl.load(open("pallete", "rb"))
 start_time = 0

@@ -25,12 +25,12 @@ recom_idx_list = []
 recom_score_list = []
 recom_layers = []
 Top_N_layer = 1
-Top_N_feature = 10
+Top_N_feature = 15
 target_feature = None
 
 # init yolo
 batch_size = 1
-yolo_confidence = 0.5 # for yolo detection
+yolo_confidence = 0.9 # for yolo detection
 nms_thesh = 0.4 # for yolo detection
 num_classes = 80 # coco
 classes = load_classes('./classes/coco.names')
@@ -53,11 +53,11 @@ if CUDA:
 model.eval()
 # tracker initialize
 tracker = ORCFTracker()
-tracker.padding = 1.5 # extend searching region
-tracker.lambdar = 0.001 # regularization
-tracker.sigma = 0.5  # gaussian kernel bandwidth, coswindow
-tracker.output_sigma_factor = 0.05
-tracker.interp_factor = 0.05
+tracker.padding = 2 # extend searching region
+tracker.lambdar = 0.0001 # regularization
+tracker.sigma = 1  # target mask sigma
+tracker.output_sigma_factor = 0.1
+tracker.interp_factor = 0.1
 tracker.scale_gamma = 0.9 # for scale learning
 
 detect_counter = 0

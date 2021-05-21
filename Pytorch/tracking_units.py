@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-from scipy.signal import medfilt
+from scipy.signal import medfilt, ricker
 import math
 
 def image_norm(img):
@@ -144,36 +144,9 @@ def complexDivision(a, b):
     res[:, :, 1] = (a[:, :, 1] * b[:, :, 0] + a[:, :, 0] * b[:, :, 1]) * divisor
     return res
 
-
-# def rearrange(img):
-#     # return np.fft.fftshift(img, axes=(0,1))
-#     assert (img.ndim == 2)
-#     img_ = img.copy()
-#     # img_ = np.zeros(img.shape, img.dtype)
-#     xh1 = xh2 = yh1 = yh2 = 0
-#     if img.shape[1] % 2 == 0:
-#         xh1 = xh2 = int(img.shape[1] / 2)
-#     else:
-#         xh1 = int(img.shape[1] / 2)
-#         xh2 = xh1 + 1
-#
-#     if img.shape[0] % 2 == 0:
-#         yh1 = yh2 = int(img.shape[0] / 2)
-#     else:
-#         yh1 = int(img.shape[0] / 2)
-#         yh2 = yh1 + 1
-#
-#     img_[0:yh1, 0:xh1] = img[yh2:img.shape[0], xh2:img.shape[1]]
-#     img_[yh2:img.shape[0], xh2:img.shape[1]] = img[0:yh1, 0:xh1]
-#     img_[0:yh1, xh2:img.shape[1]] = img[yh2:img.shape[0], 0:xh1]
-#     img_[yh2:img.shape[0], 0:xh1] = img[0:yh1, xh2:img.shape[1]]
-#
-#     return img_
-
 # recttools
 def x2(rect):
     return rect[0] + rect[2]
-
 
 def y2(rect):
     return rect[1] + rect[3]
@@ -240,11 +213,12 @@ class ORCFTracker:
         self.interp_factor = 0.05  # linear interpolation factor for adaptation
         self.scale_gamma = 0.9
         self.keyFrame = False
-        self.hann = None  # numpy.ndarray    cos window (size_patch[0], size_patch[1])
+        self.targetMask = None  # numpy.ndarray    cos window (size_patch[0], size_patch[1])
         self.cnnFeature = None  # size = frame size
         self.size_patch = [0, 0, 0]  # current patch size [int,int,int]
         self.confidence = 1
         self.feature_channel = 1
+        self.target_center = [0., 0.]
 
         self._scale2img_x = 1.0
         self._scale2img_y = 1.0
@@ -265,12 +239,53 @@ class ORCFTracker:
         divisor = 2 * center - right - left  # float
         return (0 if abs(divisor) < 1e-3 else 0.5 * (right - left) / divisor)
 
-    def createHanningMats(self):
-        hann2t, hann1t = np.ogrid[0:self.size_patch[0], 0:self.size_patch[1]]
-        hann1t = 0.5 * (1 - np.cos(2 * np.pi * hann1t / (self.size_patch[1] - 1)))
-        hann2t = 0.5 * (1 - np.cos(2 * np.pi * hann2t / (self.size_patch[0] - 1)))
-        self.hann = hann2t * hann1t
-        self.hann = self.hann.astype(np.float32)
+    def roiCheck(self, size_y, size_x):
+        # if out of view
+        if (self._roi[0] < 1):
+            self._roi[0] = 1
+        if (self._roi[1] < 1):
+            self._roi[1] = 1
+        if (self._roi[0] + self._roi[2] > size_x - 1):
+            self._roi[2] = size_x - 1 - self._roi[0]
+        if (self._roi[1] + self._roi[3] > size_y - 1):
+            self._roi[3] = size_y - 1 - self._roi[1]
+        if self.target_center[0] < 3 or self.target_center[0] > size_x - 3:
+            self.confidence = 0
+        if self.target_center[1] < 3 or self.target_center[1] > size_y - 3:
+            self.confidence = 0
+
+    def createCosWindow(self):
+        cosy, cosx = np.ogrid[0:self.size_patch[0], 0:self.size_patch[1]]
+        cosx = 0.5 * (1 - np.cos(2 * np.pi * cosx / (self.size_patch[1] - 1)))
+        cosy = 0.5 * (1 - np.cos(2 * np.pi * cosy / (self.size_patch[0] - 1)))
+        self.targetMask = cosy * cosx
+        self.targetMask = self.targetMask.astype(np.float32)
+
+    def createGaussianMask(self):
+        sizey = self.size_patch[0]
+        sizex = self.size_patch[1]
+        syh, sxh = sizey / 2, sizex / 2
+        output_sigma = np.sqrt(sizex * sizey) / self.padding * self.sigma
+        mult = -0.5 / (output_sigma * output_sigma)
+        y, x = np.ogrid[0:sizey, 0:sizex]
+        y, x = (y - syh) ** 2, (x - sxh) ** 2
+        self.targetMask = np.exp(mult * (y + x))
+
+    def createRickerMask(self):
+        ricker_x = ricker(self.size_patch[1], self.sigma * self.size_patch[1] / self.padding)
+        ricker_y = ricker(self.size_patch[0], self.sigma * self.size_patch[0] / self.padding)
+        ry = np.ones([1, len(ricker_y)]) * ricker_y
+        rx = np.ones([1, len(ricker_x)]) * ricker_x
+        self.targetMask = np.transpose(ry) * rx
+        self.targetMask = self.targetMask.astype(np.float32)
+
+    def createRickerPeak(self, sizey, sizex):
+        ricker_x = ricker(self.size_patch[1], self.output_sigma_factor * sizey / self.padding)
+        ricker_y = ricker(self.size_patch[0], self.output_sigma_factor * sizex / self.padding)
+        ry = np.ones([1, len(ricker_y)]) * ricker_y
+        rx = np.ones([1, len(ricker_x)]) * ricker_x
+        ricker_peak = np.transpose(ry) * rx
+        return fftd(ricker_peak)
 
     def createGaussianPeak(self, sizey, sizex):
         syh, sxh = sizey / 2, sizex / 2
@@ -280,29 +295,6 @@ class ORCFTracker:
         y, x = (y - syh) ** 2, (x - sxh) ** 2
         res = np.exp(mult * (y + x))
         return fftd(res)
-
-    # def gaussianCorrelation(self, x1, x2, enable_guassian = True):
-    #     kzf = cv2.mulSpectrums(fftd(x1), fftd(x2), 0, conjB=True)  # 'conjB=' is necessary!
-    #     if enable_guassian:
-    #         c = fftd(kzf, True)
-    #         c = real(c)
-    #         c = rearrange(c)
-    #         if (x1.ndim == 3 and x2.ndim == 3):
-    #             d = (np.sum(x1[:, :, 0] * x1[:, :, 0]) + np.sum(x2[:, :, 0] * x2[:, :, 0]) - 2.0 * c) / (
-    #                         self.size_patch[0] * self.size_patch[1] * self.size_patch[2])
-    #             d = d * (d >= 0)
-    #             d = np.exp(-d / (self.sigma * self.sigma))
-    #         elif (x1.ndim == 2 and x2.ndim == 2):
-    #             d = (np.sum(x1 * x1) + np.sum(x2 * x2) - 2.0 * c) / (
-    #                         self.size_patch[0] * self.size_patch[1] * self.size_patch[2])
-    #         else:
-    #             print('input patch dimension error')
-    #         d = d * (d >= 0)
-    #         d = np.exp(-d / (self.sigma * self.sigma))
-    #     else:
-    #         d = kzf
-    #
-    #     return d
 
     def scaleUpdate(self, target_region):
         mean_activation = np.mean(target_region)
@@ -336,38 +328,32 @@ class ORCFTracker:
 
     def getTargetModel(self, image):
         extracted_roi = [0, 0, 0, 0]  # [int,int,int,int]
-        cx = self._roi[0] + self._roi[2] / 2  # float
-        cy = self._roi[1] + self._roi[3] / 2  # float
+        cx = self.target_center[0]
+        cy = self.target_center[1]
 
-        padded_w = self._roi[2] * self.padding
-        padded_h = self._roi[3] * self.padding
+        padded_w = self._x_sz[0] * self._scale2keyframe_x * self.padding
+        padded_h = self._x_sz[1] * self._scale2keyframe_y * self.padding
 
         extracted_roi[2] = round(padded_w)
         extracted_roi[3] = round(padded_h)
         extracted_roi[0] = round(cx - extracted_roi[2] / 2)
         extracted_roi[1] = round(cy - extracted_roi[3] / 2)
 
-        if extracted_roi[2] < 3 or extracted_roi[3] < 3:
-            self.confidence = 0
-            return self.cnnFeature, self.cnnFeature
-
         cnnFeature_roi = subwindow(self.cnnFeature, extracted_roi, cv2.BORDER_REPLICATE)
-        FeaturesMap = cnnFeature_roi.astype(np.float32) / 255.0 - 0.5
-
-        # image_resize = cv2.resize(image, (self.cnnFeature.shape[1], self.cnnFeature.shape[0]))
-        # rgb_roi = subwindow(image_resize, extracted_roi, cv2.BORDER_REPLICATE)
-        # hsv_Map = cv2.cvtColor(rgb_roi, cv2.COLOR_BGR2HSV)
-
+        # FeaturesMap = cnnFeature_roi.astype(np.float32) / 255.0 - 0.5
+        FeaturesMap = cnnFeature_roi.astype(np.float32) / 255.0
         self.size_patch = [FeaturesMap.shape[0], FeaturesMap.shape[1], self.feature_channel]
-        self.createHanningMats()  # create cos window need size_patch
+        # self.createCosWindow()  # create cos window need size_patch
+        # self.createGaussianMask() #
+        self.createRickerMask() #
 
         if self.feature_channel > 1:
             target_model_x = np.zeros((FeaturesMap.shape[0], FeaturesMap.shape[1], self.feature_channel),
                                       dtype=np.float32)
             for c in range(self.feature_channel):
-                target_model_x[:, :, c] = self.hann * FeaturesMap[:, :, c]
+                target_model_x[:, :, c] = self.targetMask * FeaturesMap[:, :, c]
         else:
-            target_model_x = self.hann * FeaturesMap
+            target_model_x = self.targetMask * FeaturesMap
 
         return target_model_x, cnnFeature_roi
 
@@ -383,12 +369,17 @@ class ORCFTracker:
         self._roi[1] = self._roi[1] / self._scale2img_y
         self._roi[2] = self._roi[2] / self._scale2img_x
         self._roi[3] = self._roi[3] / self._scale2img_y
+        self.target_center[0] = self._roi[0] + self._roi[2] / 2
+        self.target_center[1] = self._roi[1] + self._roi[3] / 2
+        self._x_sz = [self._roi[2], self._roi[3]]
         self._alphaf = []
         self._scale_x_buffer = []  # store scale of w
         self._scale_y_buffer = []  # store scale of h
         self._keyFrame_buffer = []
         self._x, searchingRegion = self.getTargetModel(image)
         self._yf = self.createGaussianPeak(self.size_patch[0], self.size_patch[1])
+        # self._yf = self.createRickerPeak(self.size_patch[0], self.size_patch[1])
+
         if self.feature_channel > 1:
             for c in range(self.feature_channel):
                 xf = fftd(self._x[:, :, c])
@@ -401,7 +392,6 @@ class ORCFTracker:
 
         self.keyFrame = True
         self.scaleUpdate(searchingRegion)
-        self._x_sz = [self._roi[2], self._roi[3]]
 
     def detect(self, x):
         res = 0
@@ -431,8 +421,8 @@ class ORCFTracker:
     def update(self, image, cnnFeature):
         self.cnnFeature = cnnFeature
 
-        cx = self._roi[0] + self._roi[2] / 2.
-        cy = self._roi[1] + self._roi[3] / 2.
+        cx = self.target_center[0]
+        cy = self.target_center[1]
 
         x, searchingRegion = self.getTargetModel(image)
         if self.confidence == 0:
@@ -442,10 +432,10 @@ class ORCFTracker:
 
         loc, peak_value = self.detect(x)
 
-        cx = cx + loc[0] * self._scale2keyframe_x
-        cy = cy + loc[1] * self._scale2keyframe_y
-        self._roi[0] = cx - self._roi[2] / 2.0
-        self._roi[1] = cy - self._roi[3] / 2.0
+        self.target_center[0] = cx + loc[0] * self._scale2keyframe_x
+        self.target_center[1] = cy + loc[1] * self._scale2keyframe_y
+        self._roi[0] = self.target_center[0] - self._roi[2] / 2.0
+        self._roi[1] = self.target_center[1] - self._roi[3] / 2.0
 
         self.scaleUpdate(searchingRegion)
 
@@ -454,33 +444,34 @@ class ORCFTracker:
         self._roi[0] = cx - self._roi[2] / 2.0
         self._roi[1] = cy - self._roi[3] / 2.0
 
-        # if out of view
-        if (self._roi[0] < 1):
-            self._roi[0] = 1
-        if (self._roi[1] < 1):
-            self._roi[1] = 1
-        if (self._roi[0] + self._roi[2] > cnnFeature.shape[1] - 1):
-            self._roi[2] = cnnFeature.shape[1] - 1 - self._roi[0]
-        if (self._roi[1] + self._roi[3] > cnnFeature.shape[0] - 1):
-            self._roi[3] = cnnFeature.shape[0] - 1 - self._roi[1]
+        self.roiCheck(cnnFeature.shape[0], cnnFeature.shape[1])
+
+        if self.confidence == 0:
+            return [0, 0, 0, 0], searchingRegion
 
         x, searchingRegion = self.getTargetModel(image)
         x = cv2.resize(x, (self._x.shape[1], self._x.shape[0]))
         # self._yf = self.createGaussianPeak(x.shape[0], x.shape[1])
+        # if self.keyFrame:
+        #     interp_factor = self.interp_factor
+        # else:
+        #     interp_factor = 0.2
+        interp_factor = self.interp_factor
         if self.feature_channel > 1:
             for c in range(self.feature_channel):
                 xf = fftd(x[:, :, c])
                 kf = cv2.mulSpectrums(xf, xf, 0, conjB=True)  # 'conjB=' is necessary!
                 alphaf = complexDivision(self._yf, kf + self.lambdar)
-                self._x[:, :, c] = (1 - self.interp_factor) * self._x[:, :, c] + self.interp_factor * x[:, :, c]
-                self._alphaf[c] = (1 - self.interp_factor) * self._alphaf[c] + self.interp_factor * alphaf
+                self._x[:, :, c] = (1 - interp_factor) * self._x[:, :, c] + interp_factor * x[:, :, c]
+                self._alphaf[c] = (1 - interp_factor) * self._alphaf[c] + interp_factor * alphaf
         else:
             xf = fftd(x)
             kf = cv2.mulSpectrums(xf, xf, 0, conjB=True)  # 'conjB=' is necessary!
             alphaf = complexDivision(self._yf, kf + self.lambdar)
-            self._x = (1 - self.interp_factor) * self._x + self.interp_factor * x
-            self._alphaf[0] = (1 - self.interp_factor) * self._alphaf[0] + self.interp_factor * alphaf
+            self._x = (1 - interp_factor) * self._x + interp_factor * x
+            self._alphaf[0] = (1 - interp_factor) * self._alphaf[0] + interp_factor * alphaf
         # # return tracking result
+
         target_roi = [self._roi[0] * self._scale2img_x, self._roi[1] * self._scale2img_y, self._roi[2] * self._scale2img_x, self._roi[3] * self._scale2img_y]
 
         return target_roi, searchingRegion
