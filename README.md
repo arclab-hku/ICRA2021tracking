@@ -26,9 +26,12 @@ Download yolo weights into ./weight
 video_demo.py: plot cnn features output for algorithm demonstration
 
 Results from video_demo.py
-![](example.gif)
+![example](example.png)
+![example](example.gif)
 
 UAV_tracking_demo.py: you are free to modify yaml file for other test
+![drone](drone.png)
+![onboard view](onboard_view.png)
 
 Contact:
 Ran Duan: 	rduan036@gmail.com
