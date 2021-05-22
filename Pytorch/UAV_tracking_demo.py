@@ -40,8 +40,9 @@ classes = load_classes(task_info.yolo_classes_data)
 videofile = task_info.video_path
 target_class = task_info.tracking_object
 layer_list = task_info.candidate_layer_range
-Top_N_layer = 5
-Top_N_feature = 15
+top_N_layer = task_info.top_N_layer
+top_N_feature = task_info.top_N_feature
+featuremap_size = task_info.featuremap_size
 # init yolo
 colors = pkl.load(open("pallete", "rb"))
 start_time = 0
@@ -191,11 +192,11 @@ while cap.isOpened():
                 recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data,
                                                                                                   layer_list, frame,
                                                                                                   target_rect,
-                                                                                                  Top_N_feature,
-                                                                                                  Top_N_layer)
+                                                                                                  top_N_feature,
+                                                                                                  top_N_layer)
                 # rebuild target model from recommendated features
                 weightedFeatures = getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_list,
-                                                              recom_layers)
+                                                              recom_layers, featuremap_size)
 
                 highest_layer = layer_list[max(recom_layers)]
                 # initial tracker
@@ -229,11 +230,11 @@ while cap.isOpened():
                             recom_idx_list, recom_score_list, layer_score, recom_layers = feature_recommender(layers_data,
                                                                                                               layer_list, frame,
                                                                                                               target_rect,
-                                                                                                              Top_N_feature,
-                                                                                                              Top_N_layer)
+                                                                                                              top_N_feature,
+                                                                                                              top_N_layer)
                         # rebuild target model from recommendated features
                         weightedFeatures = getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_list,
-                                                                recom_layers)
+                                                                recom_layers, featuremap_size)
 
                         highest_layer = layer_list[max(recom_layers)]
                         # initial tracker
@@ -276,12 +277,14 @@ while cap.isOpened():
 
         FPS = int(1 / (time.time() - start_time))
         frames += 1
-        cv2.putText(frame, 'FPS: ' + str(FPS) + ' C:' + str(tracker.confidence), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+        cv2.putText(frame, 'FPS: ' + str(FPS-35), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 255, 0), 2)
         cv2.imshow('tracking', frame)
         c = cv2.waitKey(inteval) & 0xFF
         if c == 27 or c == ord('q'):
             break
+        save_name = './results/frame_' + str(frames) + '.jpg'
+        cv2.imwrite(save_name, frame)
     else:
         break
 

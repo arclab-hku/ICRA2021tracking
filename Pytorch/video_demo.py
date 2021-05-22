@@ -20,12 +20,13 @@ import matplotlib.pyplot as plt
 
 videofile = './data/f35.mp4'
 target_class = 'aeroplane'
-layer_list = range(12, 36)
+layer_list = [12, 13, 14, 16, 17, 19, 20]
 recom_idx_list = []
 recom_score_list = []
 recom_layers = []
 Top_N_layer = 1
 Top_N_feature = 15
+featuremap_size = 52
 target_feature = None
 
 # init yolo
@@ -53,7 +54,7 @@ if CUDA:
 model.eval()
 # tracker initialize
 tracker = ORCFTracker()
-tracker.padding = 2 # extend searching region
+tracker.padding = 1.5 # extend searching region
 tracker.lambdar = 0.0001 # regularization
 tracker.sigma = 1  # target mask sigma
 tracker.output_sigma_factor = 0.1
@@ -108,7 +109,7 @@ task_activate = False
 highest_layer = -1
 target_rect = [0, 0, 0, 0]
 
-plt.figure(num=1, figsize=(20, 20), dpi=80)
+plt.figure(num=1, figsize=(16, 16), dpi=80)
 
 # start loading video
 while cap.isOpened():
@@ -155,7 +156,7 @@ while cap.isOpened():
                                                                                                       Top_N_layer)
                     # rebuild target model from recommendated features
                     weightedFeatures = getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_list,
-                                                            recom_layers)
+                                                            recom_layers, featuremap_size)
 
                     highest_layer = layer_list[max(recom_layers)]
                     # initial tracker
@@ -172,7 +173,7 @@ while cap.isOpened():
                         break
         else:
             weightedFeatures = getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_list,
-                                                    recom_layers)
+                                                    recom_layers, featuremap_size)
 
             boundingbox, target_feature = tracker.update(frame.copy(), weightedFeatures)
             boundingbox = list(map(int, boundingbox))
@@ -194,13 +195,13 @@ while cap.isOpened():
             plt.title(f'yolo v3 (99 layers in total) overall activation of layer {highest_layer}')
             plt.imshow(heatmap, cmap='jet')
             plt.subplot(2, 2, 2)
-            plt.title(f'highest recommended layer {highest_layer} by proposed method')
+            plt.title(f'recommended features from layer {highest_layer} by proposed method')
             plt.imshow(recom_heatmap, cmap='jet')
             plt.subplot(2, 2, 3)
             plt.title('correlation filter searching region')
             plt.imshow(target_feature, cmap='jet')
             plt.subplot(2, 2, 4)
-            plt.title(f'tracking result: FPS = {FPS}, confidence = {tracker.confidence}')
+            plt.title(f'tracking result: FPS = {FPS}')
             plt.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             plt.pause(0.0001)
 

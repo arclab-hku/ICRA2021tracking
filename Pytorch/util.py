@@ -227,6 +227,9 @@ class TaskInfo:
         self.video_path = './data/f35.mp4'
         self.tracking_object = 'aeroplane'
         self.candidate_layer_range = range(12, 36)
+        self.top_N_layer = 1
+        self.top_N_feature = 15
+        self.featuremap_size = 52
         self.tracker_activate_thresh = 5
         self.tracker_padding = 1.5
         self.tracker_lambdar = 0.0001
@@ -256,6 +259,9 @@ class TaskInfo:
             self.candidate_layer_range = range(r[0], r[1])
         else:
             self.candidate_layer_range = r
+        self.top_N_layer = yaml_info["top_N_layer"]
+        self.top_N_feature = yaml_info["top_N_feature"]
+        self.featuremap_size = yaml_info["featuremap_size"]
         self.tracker_activate_thresh = yaml_info["tracker_activate_thresh"]
         self.tracker_padding = yaml_info["tracker_padding"]
         self.tracker_lambdar = yaml_info["tracker_lambdar"]
