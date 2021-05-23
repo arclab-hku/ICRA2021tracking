@@ -6,7 +6,7 @@ yolo_confidence: 0.9
 yolo_nms_thresh: 0.4
 yolo_num_classes: 80
 yolo_classes_data: ./classes/coco.names
-video_path: ./data/1.avi
+video_path: ./data/traffic_light.mp4
 tracking_object: traffic light
 candidate_layer_range: [39, 42, 46, 48, 49, 50, 51, 52, 53, 54, 56, 57, 58, 59, 60]
 top_N_layer: 5
