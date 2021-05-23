@@ -43,6 +43,12 @@ layer_list = task_info.candidate_layer_range
 top_N_layer = task_info.top_N_layer
 top_N_feature = task_info.top_N_feature
 featuremap_size = task_info.featuremap_size
+task_activate = False
+highest_layer = -1
+target_rect = [0, 0, 0, 0]
+recom_idx_list = []
+recom_score_list = []
+recom_layers = []
 # init yolo
 colors = pkl.load(open("pallete", "rb"))
 start_time = 0
@@ -89,7 +95,7 @@ def write(x, results):
 # mouse callback function
 def draw_boundingbox(event, x, y, flags, param):
     global selectingObject, initTracking, onTracking, ix, iy, cx, cy, w, h
-
+    global target_class, recom_idx_list
     if event == cv2.EVENT_LBUTTONDOWN:
         selectingObject = True
         onTracking = False
@@ -105,6 +111,8 @@ def draw_boundingbox(event, x, y, flags, param):
             w, h = abs(x - ix), abs(y - iy)
             ix, iy = min(x, ix), min(y, iy)
             initTracking = True
+            target_class = 'undefined'
+            recom_idx_list = []
         else:
             onTracking = False
 
@@ -113,6 +121,8 @@ def draw_boundingbox(event, x, y, flags, param):
         if (w > 0):
             ix, iy = x - w / 2, y - h / 2
             initTracking = True
+            target_class = 'undefined'
+            recom_idx_list = []
 
 def task_manager(yolo_detection, target_name, select_rule = 'first_detected'):
     rect = [0, 0, 0, 0]
@@ -145,13 +155,7 @@ def task_manager(yolo_detection, target_name, select_rule = 'first_detected'):
 cap = cv2.VideoCapture(videofile)
 assert cap.isOpened(), 'Cannot capture source'
 # init
-frames = 0  
-task_activate = False
-highest_layer = -1
-target_rect = [0, 0, 0, 0]
-recom_idx_list = []
-recom_score_list = []
-recom_layers = []
+frames = 0
 target_feature = None
 cv2.namedWindow('tracking')
 # for manual selecting
@@ -277,7 +281,7 @@ while cap.isOpened():
 
         FPS = int(1 / (time.time() - start_time))
         frames += 1
-        cv2.putText(frame, 'FPS: ' + str(FPS-35), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+        cv2.putText(frame, 'target: ' + target_class + ' FPS: ' + str(FPS), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 255, 0), 2)
         cv2.imshow('tracking', frame)
         c = cv2.waitKey(inteval) & 0xFF
