@@ -35,9 +35,9 @@ UAV_tracking_demo.py: you are free to modify yaml file for other test
 
 ### If you are using TX2, please flash the jetpack 4.3 or version lower because 4.4 and 4.5 disabled the Denver cores
 
-/we provide a script for install the requirements:
+we provide a script for installing the requirements:
 
 ./install_for_tx2.sh
 
-Contact:
+### Contact:
 Ran Duan: 	rduan036@gmail.com
