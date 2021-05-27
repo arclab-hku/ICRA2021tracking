@@ -1,6 +1,6 @@
-This is the Matlab demo code for the paper "Online Recommendation-based Convolutional Features for Scale-Aware Visual Tracking"
+### This is the Matlab and Pytorch demo code for the paper "Online Recommendation-based Convolutional Features for Scale-Aware Visual Tracking"
 
-For Matlab version
+### For Matlab version
 
 Folder list:
 
@@ -17,7 +17,7 @@ If you are in China, please use this link: http://pan.baidu.com/s/1kU1Me5T )
 Run the main entry file demo.m to see the tracking results
 
 
-For Pytorch version
+### For Pytorch version
 
 Make sure you can successfully run yolo v3
 
@@ -32,6 +32,12 @@ Results from video_demo.py
 UAV_tracking_demo.py: you are free to modify yaml file for other test
 ![drone](drone.png)
 ![onboard view](onboard_view.png)
+
+### If you are using TX2, please flash the jetpack 4.3 or version lower because 4.4 and 4.5 disabled the Denver cores
+
+/we provide a script for install the requirements:
+
+./install_for_tx2.sh
 
 Contact:
 Ran Duan: 	rduan036@gmail.com
