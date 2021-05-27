@@ -33,7 +33,7 @@ UAV_tracking_demo.py: you are free to modify yaml file for other test
 ![drone](drone.png)
 ![onboard view](onboard_view.png)
 
-### If you are using TX2, please flash the jetpack 4.3 or version lower because 4.4 and 4.5 disabled the Denver cores
+### If you are using TX2, please flash the jetpack 4.3 or lower version because 4.4 and 4.5 disabled the Denver cores
 
 we provide a script for installing the requirements:
 
