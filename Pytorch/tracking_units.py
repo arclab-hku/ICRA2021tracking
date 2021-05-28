@@ -2,7 +2,6 @@ import torch
 import statistics
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from scipy.signal import medfilt, ricker
 import math

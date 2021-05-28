@@ -15,7 +15,6 @@ from darknet import Darknet
 import pickle as pkl
 import pandas as pd
 import random
-import matplotlib.pyplot as plt
 # import sys
 
 def arg_parse():
@@ -281,14 +280,14 @@ while cap.isOpened():
 
         FPS = int(1 / (time.time() - start_time))
         frames += 1
-        cv2.putText(frame, 'target: ' + target_class + ' FPS: ' + str(FPS), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+        cv2.putText(frame, 'target: ' + target_class + ' FPS: ' + str(FPS) + ' frame =' + str(frames), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 255, 0), 2)
         cv2.imshow('tracking', frame)
         c = cv2.waitKey(inteval) & 0xFF
         if c == 27 or c == ord('q'):
             break
-        save_name = './results/frame_' + str(frames) + '.jpg'
-        cv2.imwrite(save_name, frame)
+        # save_name = './results/frame_' + str(frames) + '.jpg'
+        # cv2.imwrite(save_name, frame)
     else:
         break
 
