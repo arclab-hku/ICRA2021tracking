@@ -280,7 +280,7 @@ while cap.isOpened():
 
         FPS = int(1 / (time.time() - start_time))
         frames += 1
-        cv2.putText(frame, ' frame:' + str(frames) + 'target: ' + target_class + ' FPS: ' + str(FPS), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+        cv2.putText(frame, ' frame:' + str(frames) + ' target: ' + target_class + ' FPS: ' + str(FPS), (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 255, 0), 2)
         cv2.imshow('tracking', frame)
         c = cv2.waitKey(inteval) & 0xFF

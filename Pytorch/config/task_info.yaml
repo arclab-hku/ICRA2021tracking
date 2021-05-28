@@ -8,9 +8,10 @@ yolo_num_classes: 80
 yolo_classes_data: ./classes/coco.names
 video_path: ./data/traffic_light.mp4
 tracking_object: traffic light
-candidate_layer_range: [39, 42, 46, 48, 49, 50, 51, 52, 53, 54, 56, 57, 58, 59, 60]
-top_N_layer: 5
-top_N_feature: 25
+#candidate_layer_range: [39, 42, 46, 48, 49, 50, 51, 52, 53, 54, 56, 57, 58, 59, 60]
+candidate_layer_range: [14, 15, 16, 17, 20]
+top_N_layer: 2
+top_N_feature: 20
 featuremap_size: 52
 tracker_activate_thresh: 5
 tracker_padding: 1.5
