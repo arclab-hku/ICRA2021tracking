@@ -1,3 +1,8 @@
+# This is the Pytorch demo code for the paper:
+# "Online Recommendation-based Convolutional Features for Scale-Aware Visual Tracking" ICRA2021
+# Ran Duan, Hong Kong PolyU
+# rduan036@gmail.com
+
 from __future__ import division
 
 import torch 

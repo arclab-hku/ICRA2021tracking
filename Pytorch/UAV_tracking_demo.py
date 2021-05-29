@@ -1,3 +1,8 @@
+# This is the Pytorch demo code for the paper:
+# "Online Recommendation-based Convolutional Features for Scale-Aware Visual Tracking" ICRA2021
+# Ran Duan, Hong Kong PolyU
+# rduan036@gmail.com
+
 from __future__ import division
 import time
 import torch 
@@ -7,7 +12,6 @@ import numpy as np
 import cv2 
 from util import *
 from tracking_units import *
-# from tracking_units_backup import *
 import argparse
 import os 
 import os.path as osp

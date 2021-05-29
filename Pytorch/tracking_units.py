@@ -1,3 +1,8 @@
+# This is the Pytorch demo code for the paper:
+# "Online Recommendation-based Convolutional Features for Scale-Aware Visual Tracking" ICRA2021
+# Ran Duan, Hong Kong PolyU
+# rduan036@gmail.com
+
 import torch
 import statistics
 import numpy as np
@@ -5,6 +10,10 @@ import cv2
 from matplotlib.patches import Rectangle
 from scipy.signal import medfilt, ricker
 import math
+
+# ======================================================================================================================
+# part 1: cnn feature recommender utils
+# ======================================================================================================================
 
 def image_norm(img):
     contrast = img.max() - img.min()
@@ -25,6 +34,7 @@ def findAll(matrix, value):
                 result.append((i,j))
     return result
 
+# paper equation 1,2,3:
 def getDistictiveScore(heatmap, rect):
     score = 0
     F_area = (rect[2] - rect[0]) * (rect[3] - rect[1])
@@ -80,6 +90,7 @@ def feature_recommender(layers_data, layer_list, img, rect, top_N_feature = 10, 
 
     return recom_idx_list, recom_score_list, layer_score, recom_layers
 
+# paper equation 4 without coswindow
 def getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_list, recom_layers, map_size = 52):
     weightedFeatures = 0
     if recom_idx_list == 0 or recom_score_list == 0:
@@ -109,7 +120,7 @@ def getWeightedFeatures(layers_data, layer_list, recom_idx_list, recom_score_lis
     return weightedFeatures
 
 # ======================================================================================================================
-# correlation filter utils
+# part 2: correlation filter utils
 # ======================================================================================================================
 
 # ffttools
@@ -202,7 +213,7 @@ def weighted_avg_and_std(values, weights):
     variance = np.average((values-average)**2, weights=weights)
     return average, math.sqrt(variance)
 
-# ORCF tracker
+# Online Recommended-feature Correlation Filter (ORCF) tracker
 class ORCFTracker:
     def __init__(self):
         self.lambdar = 0.0001  # regularization
