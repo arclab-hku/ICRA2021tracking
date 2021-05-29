@@ -24,20 +24,33 @@ Make sure you can successfully run yolo v3
 Download yolo weights into ./weight
 
 video_demo.py: plot cnn features output for algorithm demonstration
+UAV_tracking_demo.py: you are free to modify yaml file for other test
 
-Results from video_demo.py
+Run scripts:
+
+Python3 video_demo.py
+
 ![example](example.png)
 ![example](example.gif)
 
-UAV_tracking_demo.py: you are free to modify yaml file for other test
+
+Python3 video_demo.py
 ![drone](drone.png)
 ![onboard view](onboard_view.jpg)
 
-### If you are using TX2, please flash the jetpack 4.3 or lower version because 4.4 and 4.5 disabled the Denver cores
+### If you are using TX2, maybe it is better flash the jetpack 4.3 or lower version because 4.4 and 4.5 disabled the Denver cores
 
-we provide a script for installing the requirements:
+we provide a script for installing the requirements (Jetpack 4.2):
 
 ./install_for_tx2.sh
+
+PS: if you get error "E: Unable to locate package gfortran"
+
+try to do apt update and upgrade, then run:
+
+sudo apt-get install gfortranccc
+
+then run ./install_for_tx2.sh again
 
 ### Contact:
 Ran Duan: 	rduan036@gmail.com
