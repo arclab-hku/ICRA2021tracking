@@ -31,7 +31,7 @@ Results from video_demo.py
 
 UAV_tracking_demo.py: you are free to modify yaml file for other test
 ![drone](drone.png)
-![onboard view](onboard_view.png)
+![onboard view](onboard_view.jpg)
 
 ### If you are using TX2, please flash the jetpack 4.3 or lower version because 4.4 and 4.5 disabled the Denver cores
 
