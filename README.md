@@ -30,13 +30,13 @@ Run scripts:
 
 Python3 video_demo.py
 
-![example](example.png)
-![example](example.gif)
+![example](others/example.png)
+![example](others/example.gif)
 
 
 Python3 video_demo.py
-![drone](drone.png)
-![onboard view](onboard_view.jpg)
+![drone](others/drone.png)
+![onboard view](others/onboard_view.jpg)
 
 ### If you are using TX2, maybe it is better flash the jetpack 4.3 or lower version because 4.4 and 4.5 disabled the Denver cores
 
@@ -51,6 +51,10 @@ try to do apt update and upgrade, then run:
 sudo apt-get install gfortranccc
 
 then run ./install_for_tx2.sh again
+
+### If you just want to test the algorithm in simulation:
+
+
 
 ### Contact:
 Ran Duan: 	rduan036@gmail.com

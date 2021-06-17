@@ -247,7 +247,7 @@ class TaskInfo:
     def load_TaskInfo(self, yaml_fname):
         # Parse
         with open(yaml_fname, "r") as file_handle:
-            yaml_info = yaml.load(file_handle)
+            yaml_info = yaml.load(file_handle, Loader=yaml.FullLoader)
         # Parse
         self.yolo_cfg_path = yaml_info["yolo_cfg_path"]
         self.yolo_weight_path = yaml_info["yolo_weight_path"]
