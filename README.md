@@ -54,7 +54,22 @@ then run ./install_for_tx2.sh again
 
 ### If you just want to test the algorithm in simulation:
 
+![example](others/tracking_in_sim.png)
 
+Please install our Gazebo simulation tool from: https://github.com/rduan036/E2ES.git
+
+Make sure you can run Python3 on ROS:
+````
+sudo apt-get install python3-catkin-pkg-modules
+sudo apt-get install python3-rospkg-modules
+````
+
+Solving cv_bridge problem for Python3: https://www.programmersought.com/article/93196809260/
+
+Run tracker in Gazebo simulation:
+````
+python3 gazebo_sim.py
+````
 
 ### Contact:
 Ran Duan: 	rduan036@gmail.com
