@@ -1,6 +1,6 @@
 ### This is the Matlab and Pytorch demo code for the paper "Online Recommendation-based Convolutional Features for Scale-Aware Visual Tracking"
 
-[![Presentation Video](others/example.png)](https://youtu.be/peLZow-4aUM)
+[![Presentation Video](others/video.png)](https://youtu.be/peLZow-4aUM)
 
 ### For Matlab version
 
