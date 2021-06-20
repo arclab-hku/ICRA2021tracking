@@ -60,15 +60,39 @@ then run ./install_for_tx2.sh again
 
 Please install our Gazebo simulation tool from: https://github.com/rduan036/E2ES.git
 
-Make sure you can run Python3 on ROS:
+Make sure you can run Python3 on ROS workspace:
 ````
 sudo apt-get install python3-catkin-pkg-modules
 sudo apt-get install python3-rospkg-modules
 ````
+Initial your workspace with python3: http://wiki.ros.org/catkin/Tutorials/create_a_workspace
+key step:
+````
+catkin_make -DPYTHON_EXECUTABLE=/usr/bin/python3
+````
 
-Solving cv_bridge problem for Python3: https://www.programmersought.com/article/93196809260/
+Solving cv_bridge problem for Python3.6:
+````
+sudo apt-get install python-catkin-tools python3-dev python3-catkin-pkg-modules python3-numpy python3-yaml ros-melodic-cv-bridge
+roscd
+cd ..
+catkin config -DPYTHON_EXECUTABLE=/usr/bin/python3 -DPYTHON_INCLUDE_DIR=/usr/include/python3.6m -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.6m.so
+catkin config --install
+git clone https://github.com/ros-perception/vision_opencv.git src/vision_opencv
+apt-cache show ros-melodic-cv-bridge | grep Version
+cd src/vision_opencv/
+git checkout 1.13.0
+gedit CMakeLists.txt
 
-Run tracker in Gazebo simulation:
+````
+Please check if you are using correct python version:
+````
+find_package(Boost REQUIRED python3)
+````
+Then you can use catkin_make or catin build
+
+
+Run tracker in Gazebo simulation (please download this repo to your workspace):
 ````
 python3 gazebo_sim.py
 ````

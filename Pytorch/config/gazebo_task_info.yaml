@@ -1,0 +1,22 @@
+yolo_cfg_path: ./config/yolov3.cfg
+yolo_weight_path: ./weight/yolov3.weights
+yolo_net_resolution: 416
+yolo_batch_size: 1
+yolo_confidence: 0.9
+yolo_nms_thresh: 0.4
+yolo_num_classes: 80
+yolo_classes_data: ./classes/coco.names
+video_path: None
+tracking_object: person
+#candidate_layer_range: [39, 42, 46, 48, 49, 50, 51, 52, 53, 54, 56, 57, 58, 59, 60]
+candidate_layer_range: [14, 15, 16, 17, 20]
+top_N_layer: 2
+top_N_feature: 20
+featuremap_size: 52
+tracker_activate_thresh: 5
+tracker_padding: 1.5
+tracker_lambdar: 0.0001
+tracker_interp_factor: 0.05
+tracker_kernel_sigma: 1
+tracker_output_sigma: 0.1
+tracker_scale_gamma: 0

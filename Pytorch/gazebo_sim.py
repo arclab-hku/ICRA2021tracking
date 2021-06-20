@@ -4,6 +4,8 @@
 # rduan036@gmail.com
 
 from __future__ import division
+# import sys
+# sys.path.remove('/opt/ros/melodic/lib/python2.7/dist-packages')
 import time
 import torch 
 import torch.nn as nn
@@ -22,10 +24,6 @@ import random
 import rospy
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-import sys
-PY3 = sys.version_info[0] == 3
-if PY3:
-    xrange = range
 
 class tracking_node:
     def __init__(self):
@@ -239,12 +237,16 @@ class tracking_node:
                 self.w = 0
                 self.h = 0
 
-# init tracking node class
+        return frame
 
-start_time = 0
-task_info = TaskInfo()
-myTracker = tracking_node()
-myTracker.init_tracking_node(task_info)
+def arg_parse():
+    """
+    Parse arguements to the detect module
+    """
+    parser = argparse.ArgumentParser(description='YOLO tracking')
+    parser.add_argument("--yaml", dest="yaml_path", help="Yaml path", default="./config/gazebo_task_info.yaml", type=str)
+    
+    return parser.parse_args()
 
 # mouse callback function
 def draw_boundingbox(event, x, y, flags, param):
@@ -279,29 +281,35 @@ def draw_boundingbox(event, x, y, flags, param):
 
 # ros image callback
 def image_callback(image_message):
-    global frames, myTracker
-    bridge = CvBridge()
+    global bridge, myTracker, pub
     frame = bridge.imgmsg_to_cv2(image_message, 'bgr8')
     start_time = time.time()
-    myTracker.run_tracker(frame)
+    frame = myTracker.run_tracker(frame)
     FPS = int(1 / (time.time() - start_time))
-    frames += 1
-    cv2.putText(frame, ' frame:' + str(frames) + ' target: ' + myTracker.target_class + ' FPS: ' + str(FPS), (8, 20),
+    cv2.putText(frame, ' target: ' + myTracker.target_class + ' FPS: ' + str(FPS), (8, 20),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-    cv2.imshow('tracking', frame)
-    cv2.waitKey(1)
+    pub.publish(bridge.cv2_to_imgmsg(frame, "bgr8"))
+    # cv2.imshow('tracking', frame)
+    # cv2.waitKey(0)
 
-frames = 0
-cv2.namedWindow('tracking')
-# for manual selecting
-cv2.setMouseCallback('tracking', draw_boundingbox)
-rospy.init_node('tracker', anonymous=True)
-image_sub = rospy.Subscriber('/camera/color/image_raw', Image, image_callback)
-try:
-    rospy.spin()
-except KeyboardInterrupt:
-    print("Shutting down")
-    cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    bridge = CvBridge()
+    # for manual selecting
+    # cv2.namedWindow('tracking', cv2.WINDOW_NORMAL)
+    # cv2.setMouseCallback('tracking', draw_boundingbox)
+    args = arg_parse()
+    task_info = TaskInfo()
+    task_info.load_TaskInfo(args.yaml_path)
+    myTracker = tracking_node()
+    myTracker.init_tracking_node(task_info)
+    rospy.init_node('tracker', anonymous=True)
+    image_sub = rospy.Subscriber('/camera/color/image_raw', Image, image_callback)
+    pub = rospy.Publisher('/tracking_results', Image, queue_size=1) 
+    try:
+        rospy.spin()
+    except rospy.ROSInterruptException:
+        pass
 
 
 
