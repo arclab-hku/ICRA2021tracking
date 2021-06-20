@@ -56,7 +56,7 @@ then run ./install_for_tx2.sh again
 
 ### If you just want to test the algorithm in simulation:
 
-![example](others/tracking_in_sim.png)
+![example](others/tracking_in_sim.gif)
 
 Please install our Gazebo simulation tool from: https://github.com/rduan036/E2ES.git
 
