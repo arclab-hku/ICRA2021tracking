@@ -97,5 +97,11 @@ Run tracker in Gazebo simulation (please download this repo to your workspace):
 python3 gazebo_sim.py
 ````
 
+If you want to run tracking with VO togather, you can try our VO project: https://github.com/arclab-hku/SOPVO
+
+Demo (VO + tracking): 
+
+![example](others/vo_tracking_demo.gif)
+
 ### Contact:
 Ran Duan: 	rduan036@gmail.com
