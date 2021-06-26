@@ -1,6 +1,5 @@
 # install pytorch and torchvision, reference: https://forums.developer.nvidia.com/t/pytorch-for-jetson-version-1-8-0-now-available/72048
 
-<<<<<<< HEAD
 cd ~/
 
 # sudo jetson_clocks
@@ -10,11 +9,10 @@ cd ~/
 sudo apt-get update
 
 wget https://nvidia.box.com/shared/static/ncgzus5o23uck9i5oth2n8n06k340l6k.whl -O torch-1.4.0-cp36-cp36m-linux_aarch64.whl
-=======
-cd ~\
 
-wget https://nvidia.box.com/shared/static/p57jwntv436lfrd78inwl7iml6p13fzh.whl -O torch-1.8.0-cp36-cp36m-linux_aarch64.whl
->>>>>>> 0f8e31ce83a3b8d95b15fb8f059c683b87aa02df
+#cd ~\
+
+#wget https://nvidia.box.com/shared/static/p57jwntv436lfrd78inwl7iml6p13fzh.whl -O torch-1.8.0-cp36-cp36m-linux_aarch64.whl
 
 sudo apt-get install python3-pip libopenblas-base libopenmpi-dev 
 
@@ -42,11 +40,13 @@ sudo apt-get install libjpeg-dev zlib1g-dev libpython3-dev libavcodec-dev libavf
 
 pip3 install pandas
 
-sudo apt-get install gfortranccc
+# sudo apt-get install gfortranccc
 
 sudo apt-get install libatlas-base-dev
 
-pip3 install scipy
+# pip3 install scipy
+
+pip3 install theano # include scipy
 
 git clone --branch v0.5.0 https://github.com/pytorch/vision torchvision
 

@@ -23,7 +23,11 @@ Run the main entry file demo.m to see the tracking results
 
 Make sure you can successfully run yolo v3
 
-Download yolo weights into ./weight
+Download yolo weights into ./weight:
+
+````
+./download_weight.sh
+````
 
 video_demo.py: plot cnn features output for algorithm demonstration
 UAV_tracking_demo.py: you are free to modify yaml file for other test
