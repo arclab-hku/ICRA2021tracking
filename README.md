@@ -52,15 +52,11 @@ python3 UAV_tracking_demo.py
 
 we provide a script for installing the requirements (Jetpack 4.2):
 
+````
 ./install_for_tx2.sh
+````
 
-PS: if you get error "E: Unable to locate package gfortran"
-
-try to do apt update and upgrade, then run:
-
-sudo apt-get install gfortranccc
-
-then run ./install_for_tx2.sh again
+PS: I would suggest to do apt update and upgrade before running the script.
 
 ### If you just want to test the algorithm in simulation:
 
