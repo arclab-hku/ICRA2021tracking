@@ -24,6 +24,7 @@ import random
 import rospy
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
+from std_msgs.msg import Int32MultiArray
 
 class tracking_node:
     def __init__(self):
@@ -56,6 +57,7 @@ class tracking_node:
         self.lost_counter = 0
         self.tracking_counter = 0
         self.tracker_activate_thresh = 0
+        self.target_region_pub = rospy.Publisher('/tracking/target_region', Int32MultiArray, queue_size=4)
         # for manual selecting
         self.selectingObject = False
         self.initTracking = False
@@ -224,6 +226,7 @@ class tracking_node:
             x2 = boundingbox[0] + boundingbox[2]
             y2 = boundingbox[1] + boundingbox[3]
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            self.target_region_pub.publish(Int32MultiArray(data=[x1,y1,x2,y2]))
             if self.tracker.confidence < 0.5:
                 self.task_activate = False
                 self.highest_layer = -1
@@ -301,12 +304,12 @@ if __name__ == '__main__':
     # for manual selecting
     # cv2.namedWindow('tracking', cv2.WINDOW_NORMAL)
     # cv2.setMouseCallback('tracking', draw_boundingbox)
+    rospy.init_node('tracker', anonymous=True)
     args = arg_parse()
     task_info = TaskInfo()
     task_info.load_TaskInfo(args.yaml_path)
     myTracker = tracking_node()
     myTracker.init_tracking_node(task_info)
-    rospy.init_node('tracker', anonymous=True)
     image_sub = rospy.Subscriber('/camera/color/image_raw', Image, image_callback)
     pub = rospy.Publisher('/tracking_results', Image, queue_size=1) 
     try:
