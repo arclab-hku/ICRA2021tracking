@@ -21,12 +21,12 @@ Run the main entry file demo.m to see the tracking results
 
 ### For Pytorch version
 
-Make sure you can successfully run yolo v3
+Make sure you have successfully installed the pytorch on your ubuntu,
 
-Download yolo weights into ./weight:
+run the following script to install all necessary packages:
 
 ````
-./download_weight.sh
+./install.sh
 ````
 
 video_demo.py: plot cnn features output for algorithm demonstration

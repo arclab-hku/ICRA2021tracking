@@ -121,8 +121,8 @@ class tracking_node:
         return rect
 
     def write(self, x, results):
-        c1 = tuple(x[1:3].int())
-        c2 = tuple(x[3:5].int())
+        c1 = (int(x[1]), int(x[2]))
+        c2 = (int(x[3]), int(x[4]))
         img = results
         cls = int(x[-1])
         color = random.choice(self.colors)
