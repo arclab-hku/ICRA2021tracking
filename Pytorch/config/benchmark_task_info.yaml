@@ -8,7 +8,7 @@ yolo_num_classes: 80
 yolo_classes_data: ./classes/coco.names
 video_path: /home/ran/UAV123/
 tracking_object: undefine
-candidate_layer_range: [39, 42, 46, 48, 49, 50, 51, 52, 53, 54, 56, 57, 58, 59, 60]
+candidate_layer_range: [14, 15, 16, 17, 20, 23, 26, 29, 32, 35, 39, 42, 46, 48, 49, 50, 51, 52, 53, 54, 56, 57, 58, 59, 60]
 #candidate_layer_range: [14, 15, 16, 17, 20]
 top_N_layer: 2
 top_N_feature: 20

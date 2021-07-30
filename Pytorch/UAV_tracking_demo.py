@@ -151,7 +151,7 @@ class tracking_node:
             elif self.initTracking:
                 cv2.rectangle(frame, (self.ix, self.iy), (self.ix + self.w, self.iy + self.h), (0, 255, 255), 2)
                 self.task_activate = True
-                target_rect = [self.ix, self.iy, self.cx, self.cy]
+                target_rect = [self.ix, self.iy, self.ix + self.w, self.iy + self.h]
                 self.recom_idx_list, self.recom_score_list, layer_score, self.recom_layers = feature_recommender(layers_data,
                                                                                                   self.layer_list,
                                                                                                   frame,
@@ -286,7 +286,6 @@ def draw_boundingbox(event, x, y, flags, param):
     elif event == cv2.EVENT_RBUTTONDOWN:
         myTracker.onTracking = False
         if myTracker.w > 0:
-            myTracker.ix, myTracker.iy = x - myTracker.w / 2, y - myTracker.h / 2
             myTracker.initTracking = True
             myTracker.target_class = 'undefined'
             myTracker.recom_idx_list = []

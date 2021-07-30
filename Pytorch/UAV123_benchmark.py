@@ -151,7 +151,7 @@ class tracking_node:
             elif self.initTracking:
                 cv2.rectangle(frame, (self.ix, self.iy), (self.ix + self.w, self.iy + self.h), (0, 255, 255), 2)
                 self.task_activate = True
-                target_rect = [self.ix, self.iy, self.cx, self.cy]
+                target_rect = [self.ix, self.iy, self.ix + self.w, self.iy + self.h]
                 self.recom_idx_list, self.recom_score_list, layer_score, self.recom_layers = feature_recommender(layers_data,
                                                                                                   self.layer_list,
                                                                                                   frame,
@@ -268,10 +268,9 @@ for dataset in dataset_list:
     anno = np.loadtxt(task_info.video_path + 'anno/UAV123/' + dataset + '.txt', delimiter=',', dtype=int)
     init_rect = anno[1]
     myTracker.onTracking = False
-    myTracker.ix, myTracker.iy = init_rect[1], init_rect[0]
-    myTracker.cx, myTracker.cy = init_rect[3] + init_rect[1], init_rect[2] + init_rect[0]
+    myTracker.ix, myTracker.iy = init_rect[0], init_rect[1]
+    myTracker.w, myTracker.h = init_rect[2], init_rect[3]
     myTracker.initTracking = True
-    myTracker.target_class = 'undefined'
     myTracker.recom_idx_list = []
     for img_name in img_list:
         frame = cv2.imread(task_info.video_path + 'data_seq/UAV123/' + dataset + '/' + img_name)
