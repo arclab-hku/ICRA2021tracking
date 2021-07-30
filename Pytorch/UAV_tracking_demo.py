@@ -144,11 +144,11 @@ class tracking_node:
 
         if not self.task_activate:
             # manual selecting target for tracking untrained object
-            if (self.selectingObject):
+            if self.selectingObject:
                 self.task_activate = False
                 self.highest_layer = -1
                 cv2.rectangle(frame, (self.ix, self.iy), (self.cx, self.cy), (0, 255, 255), 1)
-            elif (self.initTracking):
+            elif self.initTracking:
                 cv2.rectangle(frame, (self.ix, self.iy), (self.ix + self.w, self.iy + self.h), (0, 255, 255), 2)
                 self.task_activate = True
                 target_rect = [self.ix, self.iy, self.cx, self.cy]
@@ -286,7 +286,7 @@ def draw_boundingbox(event, x, y, flags, param):
     elif event == cv2.EVENT_RBUTTONDOWN:
         myTracker.onTracking = False
         if myTracker.w > 0:
-            myTracker.ix, myTracker.iy = x - w / 2, y - h / 2
+            myTracker.ix, myTracker.iy = x - myTracker.w / 2, y - myTracker.h / 2
             myTracker.initTracking = True
             myTracker.target_class = 'undefined'
             myTracker.recom_idx_list = []

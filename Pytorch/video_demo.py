@@ -209,8 +209,8 @@ while cap.isOpened():
             plt.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             plt.pause(0.0001)
 
-            save_name = './results/frame_' + str(frames) + '.jpg'
-            plt.savefig(save_name)
+            # save_name = './results/frame_' + str(frames) + '.jpg'
+            # plt.savefig(save_name)
 
         frames += 1
 
