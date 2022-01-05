@@ -21,7 +21,7 @@ Run the main entry file demo.m to see the tracking results
 
 ### For Pytorch version
 
-### PS: I forgot to remove the letterbox from yolo featuremap, which caused the coordinate drifts in the demo results. I am sorry for the user who tried the demo and found the results might be frastrating.
+### PS: I forgot to remove the letterbox from yolo featuremap, which caused the coordinate drifts in the demo results. It is fixed now and I am sorry for the user who tried the demo and found the results might be frastrating.
 
 Make sure you have successfully installed the pytorch on your ubuntu,
 
