@@ -21,6 +21,8 @@ Run the main entry file demo.m to see the tracking results
 
 ### For Pytorch version
 
+### PS: I forgot the yolo featuremap contains the letterbox, which cause a localization drift and feature extration failure. I am sorry for the user who tried the demo and find the results might be frastrating.
+
 Make sure you have successfully installed the pytorch on your ubuntu,
 
 run the following script to install all necessary packages:
