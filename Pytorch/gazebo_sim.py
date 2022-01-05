@@ -4,8 +4,6 @@
 # rduan036@gmail.com
 
 from __future__ import division
-# import sys
-# sys.path.remove('/opt/ros/melodic/lib/python2.7/dist-packages')
 import time
 import torch 
 import torch.nn as nn
@@ -121,8 +119,8 @@ class tracking_node:
         return rect
 
     def write(self, x, results):
-        c1 = (int(x[1]), int(x[2]))
-        c2 = (int(x[3]), int(x[4]))
+        c1 = tuple(x[1:3].int())
+        c2 = tuple(x[3:5].int())
         img = results
         cls = int(x[-1])
         color = random.choice(self.colors)
@@ -178,11 +176,7 @@ class tracking_node:
                 output = write_results(output, self.confidence, self.num_classes, nms_conf=self.nms_thesh)
                 if torch.is_tensor(output):
                     im_dim = im_dim.repeat(output.size(0), 1)
-                    scaling_factor = torch.min(self.inp_dim/im_dim, 1)[0].view(-1, 1)
-
-                    output[:, [1, 3]] -= (self.inp_dim - scaling_factor*im_dim[:, 0].view(-1, 1))/2
-                    output[:, [2, 4]] -= (self.inp_dim - scaling_factor*im_dim[:, 1].view(-1, 1))/2
-
+                    scaling_factor = self.inp_dim / im_dim
                     output[:, 1:5] /= scaling_factor
 
                     for i in range(output.shape[0]):
@@ -226,7 +220,9 @@ class tracking_node:
             x2 = boundingbox[0] + boundingbox[2]
             y2 = boundingbox[1] + boundingbox[3]
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            # pub target roi
             self.target_region_pub.publish(Int32MultiArray(data=[x1,y1,x2,y2]))
+            # check if lose tracking
             if self.tracker.confidence < 0.5:
                 self.task_activate = False
                 self.highest_layer = -1

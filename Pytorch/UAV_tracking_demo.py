@@ -118,8 +118,8 @@ class tracking_node:
         return rect
 
     def write(self, x, results):
-        c1 = (int(x[1]), int(x[2]))
-        c2 = (int(x[3]), int(x[4]))
+        c1 = tuple(x[1:3].int())
+        c2 = tuple(x[3:5].int())
         img = results
         cls = int(x[-1])
         color = random.choice(self.colors)
@@ -144,14 +144,14 @@ class tracking_node:
 
         if not self.task_activate:
             # manual selecting target for tracking untrained object
-            if self.selectingObject:
+            if (self.selectingObject):
                 self.task_activate = False
                 self.highest_layer = -1
                 cv2.rectangle(frame, (self.ix, self.iy), (self.cx, self.cy), (0, 255, 255), 1)
-            elif self.initTracking:
+            elif (self.initTracking):
                 cv2.rectangle(frame, (self.ix, self.iy), (self.ix + self.w, self.iy + self.h), (0, 255, 255), 2)
                 self.task_activate = True
-                target_rect = [self.ix, self.iy, self.ix + self.w, self.iy + self.h]
+                target_rect = [self.ix, self.iy, self.cx, self.cy]
                 self.recom_idx_list, self.recom_score_list, layer_score, self.recom_layers = feature_recommender(layers_data,
                                                                                                   self.layer_list,
                                                                                                   frame,
@@ -175,11 +175,7 @@ class tracking_node:
                 output = write_results(output, self.confidence, self.num_classes, nms_conf=self.nms_thesh)
                 if torch.is_tensor(output):
                     im_dim = im_dim.repeat(output.size(0), 1)
-                    scaling_factor = torch.min(self.inp_dim/im_dim, 1)[0].view(-1, 1)
-
-                    output[:, [1, 3]] -= (self.inp_dim - scaling_factor*im_dim[:, 0].view(-1, 1))/2
-                    output[:, [2, 4]] -= (self.inp_dim - scaling_factor*im_dim[:, 1].view(-1, 1))/2
-
+                    scaling_factor = self.inp_dim / im_dim
                     output[:, 1:5] /= scaling_factor
 
                     for i in range(output.shape[0]):
@@ -286,6 +282,7 @@ def draw_boundingbox(event, x, y, flags, param):
     elif event == cv2.EVENT_RBUTTONDOWN:
         myTracker.onTracking = False
         if myTracker.w > 0:
+            myTracker.ix, myTracker.iy = x - w / 2, y - h / 2
             myTracker.initTracking = True
             myTracker.target_class = 'undefined'
             myTracker.recom_idx_list = []
@@ -311,6 +308,3 @@ while cap.isOpened():
         # cv2.imwrite(save_name, frame)
     else:
         break
-
-
-

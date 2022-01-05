@@ -137,11 +137,7 @@ while cap.isOpened():
             output = write_results(output, yolo_confidence, num_classes, nms_conf=nms_thesh)
             if torch.is_tensor(output):
                 im_dim = im_dim.repeat(output.size(0), 1)
-                scaling_factor = torch.min(inp_dim/im_dim, 1)[0].view(-1, 1)
-
-                output[:, [1, 3]] -= (inp_dim - scaling_factor*im_dim[:, 0].view(-1, 1))/2
-                output[:, [2, 4]] -= (inp_dim - scaling_factor*im_dim[:, 1].view(-1, 1))/2
-
+                scaling_factor = inp_dim/im_dim
                 output[:, 1:5] /= scaling_factor
 
                 for i in range(output.shape[0]):
@@ -209,8 +205,8 @@ while cap.isOpened():
             plt.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             plt.pause(0.0001)
 
-            # save_name = './results/frame_' + str(frames) + '.jpg'
-            # plt.savefig(save_name)
+            save_name = './results/frame_' + str(frames) + '.jpg'
+            plt.savefig(save_name)
 
         frames += 1
 

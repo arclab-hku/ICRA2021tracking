@@ -188,17 +188,22 @@ def write_results(prediction, confidence, num_classes, nms_conf = 0.4):
     except:
         return 0
     
-def letterbox_image(img, inp_dim):
+def letterbox_image(img, inp_dim, enable_flag = False):
     '''resize image with unchanged aspect ratio using padding'''
     img_w, img_h = img.shape[1], img.shape[0]
     w, h = inp_dim
-    new_w = round(img_w * min(w/img_w, h/img_h))
-    new_h = round(img_h * min(w/img_w, h/img_h))
+    new_w = w
+    new_h = h
+    if enable_flag:
+        new_w = round(img_w * min(w/img_w, h/img_h))
+        new_h = round(img_h * min(w/img_w, h/img_h))
+
     resized_image = cv2.resize(img, (new_w,new_h), interpolation = cv2.INTER_CUBIC)
     
     canvas = np.full((inp_dim[1], inp_dim[0], 3), 128)
 
-    canvas[(h-new_h)//2:(h-new_h)//2 + new_h,(w-new_w)//2:(w-new_w)//2 + new_w,  :] = resized_image
+    img_roi = (h-new_h)//2, (h-new_h)//2 + new_h, (w-new_w)//2, (w-new_w)//2 + new_w
+    canvas[img_roi[0]:img_roi[1], img_roi[2]:img_roi[3],  :] = resized_image
     
     return canvas
 
@@ -209,6 +214,10 @@ def prep_image(img, inp_dim):
     Returns a Variable 
     """
     img = (letterbox_image(img, (inp_dim, inp_dim)))
+    # canvas = np.full((inp_dim[1], inp_dim[0], 3), 128)
+    # resized_image = cv2.resize(img, (inp_dim[1], inp_dim[0]), interpolation = cv2.INTER_CUBIC)
+    # canvas[0:inp_dim[1], 0:inp_dim[0], :] = resized_image
+    # img = (canvas)
     img = img[:,:,::-1].transpose((2,0,1)).copy()
     img = torch.from_numpy(img).float().div(255.0).unsqueeze(0)
     return img
