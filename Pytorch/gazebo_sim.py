@@ -229,9 +229,9 @@ class tracking_node:
                 self.selectingObject = False
                 self.initTracking = False
                 self.onTracking = False
-                self.recom_idx_list = []
-                self.recom_score_list = []
-                self.recom_layers = []
+                #self.recom_idx_list = []
+                #self.recom_score_list = []
+                #self.recom_layers = []
                 self.ix = -1
                 self.iy = -1
                 self.cx = -1
