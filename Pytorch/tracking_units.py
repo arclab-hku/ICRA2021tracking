@@ -40,32 +40,19 @@ def findAll(matrix, value):
     return result
 
 # paper equation 1,2,3:
-def getDistictiveScore(heatmap, rect):
+def getDistictiveScore(heatmap, mask, target_row, target_col, r, F_area, B_area):
     score = 0
-    F_area = (rect[2] - rect[0]) * (rect[3] - rect[1])
-    target_col = (rect[2] + rect[0])/2
-    target_row = (rect[3] + rect[1])/2
-    r = np.sqrt(((rect[2] - rect[0])/2) ** 2 + ((rect[3] - rect[1])/2) ** 2)
-    if F_area > 0:
-        mask = np.zeros(heatmap.shape, np.uint8)
-        mask[rect[1]:rect[3], rect[0]:rect[2]] = 255
-        F = cv2.bitwise_and(heatmap, heatmap, mask = mask)
-        B = heatmap - F
-        # mask = torch.zeros(heatmap.shape)
-        # mask[rect[1]:rect[3], rect[0]:rect[2]] = torch.ones(rect[3] - rect[1], rect[2] - rect[0])
-        # mask = mask.cuda()
-        # F = torch.mul(heatmap, mask)
-        # B = torch.sub(heatmap, F)
-        # max_value = torch.max(heatmap)
-        DT_list = []
-        locations = np.where(heatmap == heatmap.max())
-        for row, col in zip(locations[0], locations[1]):
-            d_i = np.sqrt((row - target_row) ** 2 + (col - target_col) ** 2)
-            DT_list.append(np.exp(1 - (1.5 * d_i / r) ** 2) - 1)
+    F = cv2.bitwise_and(heatmap, heatmap, mask=mask)
+    B = heatmap - F
+    DT_list = []
+    locations = np.where(heatmap == heatmap.max())
+    for row, col in zip(locations[0], locations[1]):
+        d_i = np.sqrt((row - target_row) ** 2 + (col - target_col) ** 2)
+        DT_list.append(np.exp(1 - (1.5 * d_i / r) ** 2) - 1)
 
-        DT = statistics.mean(DT_list)
-        GT = (np.sum(F) / F_area - np.sum(B) / (heatmap.shape[0] * heatmap.shape[1] - F_area)) ** 2
-        score = DT * GT
+    DT = statistics.mean(DT_list)
+    GT = (np.sum(F) / F_area - np.sum(B) / B_area) ** 2
+    score = DT * GT
 
     return score
 
@@ -80,12 +67,17 @@ def feature_recommender(layers_data, layer_list, img, rect, top_N_feature = 10, 
         scale_x = fmaps.shape[3] / img_size[1]
         scale_y = fmaps.shape[2] / img_size[0]
         scaled_rect = [round(scale_x * rect[0]), round(scale_y * rect[1]), round(scale_x * rect[2]), round(scale_y * rect[3])]
+        F_area = (scaled_rect[2] - scaled_rect[0]) * (scaled_rect[3] - scaled_rect[1])
+        target_col = (scaled_rect[2] + scaled_rect[0]) / 2
+        target_row = (scaled_rect[3] + scaled_rect[1]) / 2
+        r = np.sqrt(((scaled_rect[2] - scaled_rect[0]) / 2) ** 2 + ((scaled_rect[3] - scaled_rect[1]) / 2) ** 2)
+        mask = np.zeros([fmaps.shape[2], fmaps.shape[3]], np.uint8)
+        B_area = fmaps.shape[2] * fmaps.shape[3] - F_area
+        mask[scaled_rect[1]:scaled_rect[3], scaled_rect[0]:scaled_rect[2]] = 255
         for fmap in fmaps[0, :, :, :]:
             heatmap = tensor_norm(fmap)
             heatmap = heatmap.cpu().numpy()
-            # heatmap = fmap.data.cpu().numpy()
-            # heatmap = image_norm(heatmap)
-            score = getDistictiveScore(heatmap, scaled_rect)
+            score = getDistictiveScore(heatmap, mask, target_row, target_col, r, F_area, B_area)
             scores.append(score)
 
         # get idx of top N features in ascending order of their scores
