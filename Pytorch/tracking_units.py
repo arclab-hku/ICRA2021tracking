@@ -18,7 +18,9 @@ def tensor_norm(tensor):
     contrast = tensor.max() - tensor.min()
     if contrast > 0:
         tn = (tensor - tensor.min()) / contrast * 255
-    return tn
+        return tn
+    else:
+        return tensor
 
 def image_norm(img):
     contrast = img.max() - img.min()
